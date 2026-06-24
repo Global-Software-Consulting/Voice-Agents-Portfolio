@@ -1,0 +1,133 @@
+{
+  "_note": "Webhook tool configs for the Nestriq ElevenLabs agent. Create each via POST https://api.elevenlabs.io/v1/convai/tools with body {\"tool_config\": <object>}. RULE: every leaf param must include description, dynamic_variable AND constant_value keys, but exactly ONE is non-empty (description=LLM fills it, constant_value=fixed, dynamic_variable=from a variable). ngrok free URLs change on restart.",
+  "tools": [
+    {
+      "type": "webhook",
+      "name": "createLead",
+      "description": "Create a new seller lead as soon as you have the caller's name. Call once near the start. Returns a leadId you must reuse in later tools.",
+      "response_timeout_secs": 20,
+      "api_schema": {
+        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "method": "POST",
+        "path_params_schema": [],
+        "query_params_schema": [
+          { "id": "tenant", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "nestriq" },
+          { "id": "fn", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "createLead" },
+          { "id": "conversation_id", "type": "string", "required": false, "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "" }
+        ],
+        "request_headers": [
+          { "type": "value", "name": "Content-Type", "value": "application/json" },
+          { "type": "value", "name": "ngrok-skip-browser-warning", "value": "true" }
+        ],
+        "request_body_schema": {
+          "id": "body",
+          "type": "object",
+          "description": "Seller lead details",
+          "required": true,
+          "properties": [
+            { "id": "name", "type": "string", "required": true, "description": "The seller's full name.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "phone", "type": "string", "required": false, "description": "The seller's phone number.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "email", "type": "string", "required": false, "description": "The seller's email address.", "dynamic_variable": "", "constant_value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "webhook",
+      "name": "saveSellerDetails",
+      "description": "Save property and seller context as you learn it (address, condition, reason, timeline). Pass the leadId from createLead.",
+      "response_timeout_secs": 20,
+      "api_schema": {
+        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "method": "POST",
+        "path_params_schema": [],
+        "query_params_schema": [
+          { "id": "tenant", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "nestriq" },
+          { "id": "fn", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "saveSellerDetails" },
+          { "id": "conversation_id", "type": "string", "required": false, "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "" }
+        ],
+        "request_headers": [
+          { "type": "value", "name": "Content-Type", "value": "application/json" },
+          { "type": "value", "name": "ngrok-skip-browser-warning", "value": "true" }
+        ],
+        "request_body_schema": {
+          "id": "body",
+          "type": "object",
+          "description": "Property and seller context",
+          "required": true,
+          "properties": [
+            { "id": "leadId", "type": "string", "required": false, "description": "The lead id returned by createLead.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "address", "type": "string", "required": false, "description": "The property address.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "condition", "type": "string", "required": false, "description": "The property condition.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "reason", "type": "string", "required": false, "description": "The seller's reason for selling.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "timeline", "type": "string", "required": false, "description": "The seller's desired selling timeline.", "dynamic_variable": "", "constant_value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "webhook",
+      "name": "calculateMotivationScore",
+      "description": "Calculate the seller's motivation score (0-100). Call once you know the reason and timeline. Pass the leadId from createLead.",
+      "response_timeout_secs": 20,
+      "api_schema": {
+        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "method": "POST",
+        "path_params_schema": [],
+        "query_params_schema": [
+          { "id": "tenant", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "nestriq" },
+          { "id": "fn", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "calculateMotivationScore" },
+          { "id": "conversation_id", "type": "string", "required": false, "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "" }
+        ],
+        "request_headers": [
+          { "type": "value", "name": "Content-Type", "value": "application/json" },
+          { "type": "value", "name": "ngrok-skip-browser-warning", "value": "true" }
+        ],
+        "request_body_schema": {
+          "id": "body",
+          "type": "object",
+          "description": "Motivation scoring inputs",
+          "required": true,
+          "properties": [
+            { "id": "leadId", "type": "string", "required": false, "description": "The lead id returned by createLead.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "reason", "type": "string", "required": false, "description": "The seller's reason for selling.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "timeline", "type": "string", "required": false, "description": "The seller's desired selling timeline.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "condition", "type": "string", "required": false, "description": "The property condition.", "dynamic_variable": "", "constant_value": "" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "webhook",
+      "name": "bookConsultation",
+      "description": "Book a consultation appointment when the seller agrees. Pass the leadId from createLead plus the preferred date and time.",
+      "response_timeout_secs": 20,
+      "api_schema": {
+        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "method": "POST",
+        "path_params_schema": [],
+        "query_params_schema": [
+          { "id": "tenant", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "nestriq" },
+          { "id": "fn", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "bookConsultation" },
+          { "id": "conversation_id", "type": "string", "required": false, "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "" }
+        ],
+        "request_headers": [
+          { "type": "value", "name": "Content-Type", "value": "application/json" },
+          { "type": "value", "name": "ngrok-skip-browser-warning", "value": "true" }
+        ],
+        "request_body_schema": {
+          "id": "body",
+          "type": "object",
+          "description": "Consultation booking details",
+          "required": true,
+          "properties": [
+            { "id": "leadId", "type": "string", "required": false, "description": "The lead id returned by createLead.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "date", "type": "string", "required": false, "description": "Preferred consultation date (YYYY-MM-DD).", "dynamic_variable": "", "constant_value": "" },
+            { "id": "time", "type": "string", "required": false, "description": "Preferred consultation time, e.g. 14:00.", "dynamic_variable": "", "constant_value": "" }
+          ]
+        }
+      }
+    }
+  ],
+  "post_call_webhook_url": "https://4e72-39-45-106-49.ngrok-free.app/api/webhooks/elevenlabs"
+}
