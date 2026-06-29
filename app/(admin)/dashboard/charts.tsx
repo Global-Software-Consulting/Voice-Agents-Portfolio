@@ -211,8 +211,15 @@ export function DonutChart({
   const active = hover != null ? arcs[hover] : null;
 
   return (
-    <div className="flex items-center gap-5">
-      <svg viewBox="0 0 200 200" width={size} height={size} className="shrink-0">
+    <div className="flex flex-col items-center gap-5 sm:flex-row">
+      {/* Fluid like the other charts: scales with its container (viewBox), caps
+          at `size`, and stacks above the legend on narrow screens. */}
+      <svg
+        viewBox="0 0 200 200"
+        className="h-auto w-full"
+        style={{ maxWidth: size }}
+        role="img"
+      >
         {arcs.map((a) => (
           <circle
             key={a.label}
@@ -238,7 +245,7 @@ export function DonutChart({
         </text>
       </svg>
 
-      <ul className="space-y-1.5 text-sm">
+      <ul className="w-full space-y-1.5 text-sm sm:w-auto sm:flex-1">
         {arcs.map((a) => (
           <li
             key={a.label}
