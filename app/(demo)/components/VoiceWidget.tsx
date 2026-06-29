@@ -4,8 +4,9 @@
 // Degrades to a clear hint when no agent id is configured.
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { LeadFallbackForm } from "./LeadFallbackForm";
 
 // Lazy + client-only so the Hume SDK never ships for non-Hume tenants or SSR.
 const HumeWidget = dynamic(() => import("./HumeWidget"), { ssr: false });
@@ -18,17 +19,37 @@ type Props = {
 };
 
 export function VoiceWidget({ agentId, platform, accent, tenant }: Props) {
+  // When the agent can't be used (e.g. out of credits) we show a callback form.
+  const [outOfCredits, setOutOfCredits] = useState(false);
+
   useEffect(() => {
     if (platform !== "elevenlabs" || !agentId) return;
-    const scriptId = "elevenlabs-convai-embed";
-    if (document.getElementById(scriptId)) return;
+    // Pre-check ElevenLabs credits; if exhausted, show the callback form instead.
+    fetch(`/api/voice/credits?platform=elevenlabs`)
+      .then((r) => r.json())
+      .then((d: { outOfCredits?: boolean }) => {
+        if (d.outOfCredits) setOutOfCredits(true);
+      })
+      .catch(() => {});
+
+    if (document.getElementById("elevenlabs-convai-embed")) return;
     const s = document.createElement("script");
-    s.id = scriptId;
+    s.id = "elevenlabs-convai-embed";
     s.src = "https://unpkg.com/@elevenlabs/convai-widget-embed";
     s.async = true;
     s.type = "text/javascript";
     document.body.appendChild(s);
   }, [platform, agentId]);
+
+  if (outOfCredits) {
+    return (
+      <LeadFallbackForm
+        tenant={tenant}
+        accent={accent}
+        reason="Our voice line is busy right now."
+      />
+    );
+  }
 
   if (!agentId) {
     // Platform-specific env hint when the demo isn't wired to a live agent yet.

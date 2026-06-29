@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VoiceProvider, useVoice, type ToolCallHandler } from "@humeai/voice-react";
+import { LeadFallbackForm } from "./LeadFallbackForm";
 
 type Props = { tenant: string; configId: string; accent: string };
 type InnerProps = Props & { chatIdRef: React.MutableRefObject<string> };
@@ -47,6 +48,9 @@ function userProsodyScores(m: unknown): Record<string, number> | null {
 function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
   const { connect, disconnect, status, messages, chatMetadata } = useVoice();
   const [error, setError] = useState<string | null>(null);
+  // When the call can't start (out of credits / quota / connection error) we
+  // offer the callback form instead.
+  const [failed, setFailed] = useState(false);
   const lastEmotion = useRef<string>("");
 
   // Share the live chat id with the tool-call handler (in the parent) so every
@@ -74,6 +78,7 @@ function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect");
+      setFailed(true);
     }
   }, [connect, configId]);
 
@@ -101,6 +106,28 @@ function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
 
   const connected = status.value === "connected";
   const connecting = status.value === "connecting";
+
+  // Couldn't start the call (e.g. out of credits) → show the callback form.
+  if (failed) {
+    return (
+      <div className="fixed bottom-5 right-5 z-50 w-[92vw] max-w-sm">
+        <LeadFallbackForm
+          tenant={tenant}
+          accent={accent}
+          reason="Our voice line is busy right now."
+        />
+        <button
+          onClick={() => {
+            setFailed(false);
+            setError(null);
+          }}
+          className="mt-2 text-xs text-gray-500 underline"
+        >
+          Try the voice agent again
+        </button>
+      </div>
+    );
+  }
 
   // Float in the bottom-right corner (like the ElevenLabs ConvAI widget) rather
   // than sitting inline in the hero — position:fixed takes it out of flow.
