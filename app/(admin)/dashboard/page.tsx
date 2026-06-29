@@ -15,5 +15,14 @@ export default async function DashboardPage({
 }) {
   const data = await loadDashboardData();
   const { tenant } = await searchParams;
-  return <DashboardClient data={data} initialTenant={tenant ?? "all"} />;
+  // In a single-tenant deployment, lock the dashboard to that one agent so it's
+  // a per-agent admin (no tenant switcher, no other agents' data).
+  const locked = process.env.NEXT_PUBLIC_ACTIVE_TENANT?.trim() || undefined;
+  return (
+    <DashboardClient
+      data={data}
+      initialTenant={locked ?? tenant ?? "all"}
+      lockedTenant={locked}
+    />
+  );
 }

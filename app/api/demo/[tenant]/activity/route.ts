@@ -16,7 +16,8 @@ export async function GET(
 
     const t = await sb.from("tenants").select("id").eq("slug", tenant).maybeSingle();
     if (t.error) throw t.error;
-    if (!t.data) return Response.json({ functionCalls: [], transcript: "", summary: "" });
+    if (!t.data)
+      return Response.json({ functionCalls: [], transcript: "", summary: "", emotion: null });
     const tenantId = t.data.id;
 
     // Recent function calls (newest first).
@@ -27,6 +28,17 @@ export async function GET(
       .order("created_at", { ascending: false })
       .limit(10);
     if (fc.error) throw fc.error;
+
+    // Latest emotion analysis (Lexora / Hume). Null for demos that don't emit it.
+    const em = await sb
+      .from("agent_events")
+      .select("payload, created_at")
+      .eq("tenant_id", tenantId)
+      .eq("event_type", "emotion_analysis")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (em.error) throw em.error;
 
     // Latest transcript for this tenant's most recent call.
     const lastCall = await sb
@@ -53,7 +65,12 @@ export async function GET(
       summary = tr.data?.summary ?? "";
     }
 
-    return Response.json({ functionCalls: fc.data ?? [], transcript, summary });
+    return Response.json({
+      functionCalls: fc.data ?? [],
+      transcript,
+      summary,
+      emotion: em.data?.payload ?? null,
+    });
   } catch (err) {
     const message =
       err instanceof Error

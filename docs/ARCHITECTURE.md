@@ -197,6 +197,51 @@ schema — which is the entire point.
 
 ---
 
+## Deployment topologies
+
+"One codebase" does **not** mean "one deployment." The same build artifact can be
+deployed many times with different env vars. Two supported topologies:
+
+### A) Wildcard — one deployment, all demos + hub (default)
+
+- **One** Vercel project, repo connected.
+- DNS: a **wildcard** `*.voice.gsoftconsulting.com` → that one deployment.
+- `proxy.ts` reads the **subdomain** from the Host header and rewrites to the right
+  tenant / `admin` / hub. `NEXT_PUBLIC_ACTIVE_TENANT` is **unset**.
+- This is what the rest of this doc describes.
+
+### B) Single-tenant — each agent on its own domain, no hub
+
+Deploy each agent independently while keeping **one repo and one Supabase**:
+
+- **One Vercel project per agent**, all importing the **same** GitHub repo.
+- Each project sets **`NEXT_PUBLIC_ACTIVE_TENANT=<slug>`** (e.g. `lexora`) plus its
+  own custom domain and that agent's voice-platform secrets.
+- All projects share the **same** `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, so
+  they read/write one database; rows stay separated by `tenant_id`.
+- In single-tenant mode `proxy.ts` ignores the subdomain and rewrites every request
+  to `/site/<ACTIVE_TENANT>`. **The hub is never served.**
+
+```
+nestriqai.com   →  voice-nestriq  (NEXT_PUBLIC_ACTIVE_TENANT=nestriq)   ┐
+lexora-law.com  →  voice-lexora   (NEXT_PUBLIC_ACTIVE_TENANT=lexora)    ├─ same repo,
+…               →  …                                                    │  same Supabase
+admin.gsoftconsulting.com → voice-admin (ACTIVE_TENANT unset → dashboard)┘
+```
+
+**Admin in topology B:** run one extra deployment with `NEXT_PUBLIC_ACTIVE_TENANT`
+**unset** (e.g. `admin.gsoftconsulting.com`); it keeps the full multi-tenant
+dashboard and reads all tenants from the shared DB. (Alternatively, give each agent
+its own scoped `/dashboard` — more isolation, more logins.)
+
+> Follow-up nicety: in single-tenant mode the demo page's "Admin Dashboard" link
+> still derives `admin.<host>`. If the shared admin lives on a different domain, add
+> a `NEXT_PUBLIC_ADMIN_URL` override and point the link at it.
+
+See `.env.example` for the full variable list and which are shared vs per-deployment.
+
+---
+
 ## Summary answer to the original questions
 
 - **One repo?** Yes — one Next.js app, not 5/6 separate apps.

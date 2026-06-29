@@ -1,13 +1,24 @@
-// Subdomain-based multi-tenant routing.
+// Multi-tenant routing. Two modes — the same codebase supports both:
 //
-//   nestriq.voice.gsoftconsulting.com  -> rewrite to /site/nestriq  (demo)
-//   admin.voice.gsoftconsulting.com    -> rewrite to /dashboard     (admin)
-//   voice.gsoftconsulting.com          -> /                         (hub)
+// 1. WILDCARD mode (NEXT_PUBLIC_ACTIVE_TENANT unset) — one deployment serves
+//    everything; the subdomain in the Host header picks the tenant:
+//      nestriq.voice.gsoftconsulting.com  -> /site/nestriq  (demo)
+//      admin.voice.gsoftconsulting.com    -> /dashboard     (admin)
+//      voice.gsoftconsulting.com          -> /              (hub)
+//
+// 2. SINGLE-TENANT mode (NEXT_PUBLIC_ACTIVE_TENANT set, e.g. "lexora") — this
+//    whole domain IS one agent. Every request renders that tenant's demo; the
+//    hub is never served. Used to deploy each agent on its own domain (one
+//    Vercel project per agent, same repo + same Supabase, different env var).
+//    See docs/ARCHITECTURE.md → "Deployment topologies".
 //
 // Local dev: use *.lvh.me:3000 (resolves to 127.0.0.1), e.g. nestriq.lvh.me:3000.
 // The URL the visitor sees never changes; only the internal path is rewritten.
 
 import { NextResponse, type NextRequest } from "next/server";
+
+// When set, lock this deployment to a single tenant (single-tenant mode).
+const ACTIVE_TENANT = process.env.NEXT_PUBLIC_ACTIVE_TENANT?.trim();
 
 // Hosts that should render the hub, not a tenant.
 const RESERVED = new Set(["", "www", "voice", "app"]);
@@ -26,13 +37,27 @@ function getSubdomain(hostname: string): string {
 }
 
 export function proxy(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  const suffix = url.pathname === "/" ? "" : url.pathname;
+
+  // SINGLE-TENANT mode: this domain is one agent. Serve its demo, plus its OWN
+  // admin dashboard (scoped to this agent) at the admin.* subdomain. No hub, no
+  // other tenants. Works for any base domain (admin.localhost, admin.<agent>.com).
+  if (ACTIVE_TENANT) {
+    const stHost = (req.headers.get("host") ?? "").split(":")[0];
+    if (stHost.startsWith("admin.")) {
+      url.pathname = `/dashboard${suffix}`;
+      return NextResponse.rewrite(url);
+    }
+    url.pathname = `/site/${ACTIVE_TENANT}${suffix}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // WILDCARD mode: pick the tenant from the Host header's subdomain.
   const host = req.headers.get("host") ?? "";
   const sub = getSubdomain(host);
-  const url = req.nextUrl.clone();
 
   if (RESERVED.has(sub)) return NextResponse.next(); // hub
-
-  const suffix = url.pathname === "/" ? "" : url.pathname;
 
   if (sub === "admin") {
     url.pathname = `/dashboard${suffix}`;

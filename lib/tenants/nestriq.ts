@@ -104,6 +104,14 @@ export const nestriq: TenantConfig = {
         a: "Every conversation produces a lead, a motivation score, a transcript, and a summary — all visible in the admin dashboard instantly.",
       },
     ],
+    conversation: {
+      turns: [
+        { side: "agent", text: "Hi, this is Nestriq AI. Are you looking to sell a property?" },
+        { side: "user", text: "Yes, I inherited a house and need to sell quickly." },
+        { side: "agent", text: "I can help with that. What’s the property address and condition?" },
+      ],
+      outcomes: ["✓ Lead created · Motivation score: 88/100", "Consultation booked"],
+    },
   },
 
   testPrompts: [

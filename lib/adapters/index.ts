@@ -4,18 +4,18 @@
 import type { VoicePlatform } from "../tenants/types";
 import type { PlatformAdapter } from "./types";
 import { elevenlabsAdapter } from "./elevenlabs";
+import { humeAdapter } from "./hume";
 
 // import { vapiAdapter } from "./vapi";
 // import { retellAdapter } from "./retell";
-// import { humeAdapter } from "./hume";
 // import { ultravoxAdapter } from "./ultravox";
 // import { deepgramAdapter } from "./deepgram";
 
 const ADAPTERS: Partial<Record<VoicePlatform, PlatformAdapter>> = {
   elevenlabs: elevenlabsAdapter,
+  hume: humeAdapter,
   // vapi: vapiAdapter,
   // retell: retellAdapter,
-  // hume: humeAdapter,
   // ultravox: ultravoxAdapter,
   // deepgram: deepgramAdapter,
 };

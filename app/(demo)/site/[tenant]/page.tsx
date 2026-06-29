@@ -7,17 +7,31 @@ import { getTenant } from "@/lib/tenants/registry";
 import { VoiceWidget } from "../../components/VoiceWidget";
 
 // Build the admin-dashboard URL for this tenant from the current host:
-//   nestriq.lvh.me:3000          -> http://admin.lvh.me:3000/?tenant=nestriq
+//   nestriq.lvh.me:3000               -> http://admin.lvh.me:3000/?tenant=nestriq
 //   nestriq.voice.gsoftconsulting.com -> https://admin.voice.gsoftconsulting.com/?tenant=nestriq
+//   localhost:3000                    -> http://admin.localhost:3000/?tenant=nestriq
+// In single-tenant deployments the admin lives on a separate domain — set
+// NEXT_PUBLIC_ADMIN_URL (e.g. https://admin.voice.gsoftconsulting.com) and it's used directly.
 function adminUrl(host: string, slug: string): string {
+  const override = process.env.NEXT_PUBLIC_ADMIN_URL;
+  if (override) {
+    return `${override.replace(/\/$/, "")}/?tenant=${slug}`;
+  }
   const [hostname, port] = host.split(":");
   const isLocal =
     hostname.endsWith("lvh.me") ||
     hostname.endsWith("localhost") ||
+    hostname === "localhost" ||
     hostname === "127.0.0.1";
   const protocol = isLocal ? "http" : "https";
   const parts = hostname.split(".");
-  parts[0] = "admin"; // replace the tenant subdomain with "admin"
+  // Replace the leading subdomain label with "admin"; if the host has no
+  // subdomain (e.g. "localhost"), prepend "admin." so it stays resolvable.
+  if (parts.length > 1) {
+    parts[0] = "admin";
+  } else {
+    parts.unshift("admin");
+  }
   const base = parts.join(".") + (port ? `:${port}` : "");
   return `${protocol}://${base}/?tenant=${slug}`;
 }
@@ -36,6 +50,7 @@ export default async function DemoPage({
   const host = (await headers()).get("host") ?? "voice.gsoftconsulting.com";
   const dashboardHref = adminUrl(host, cfg.slug);
 
+  console.log("========url======", dashboardHref)
   return (
     <main className="min-h-screen bg-white text-gray-900">
       {/* ---------- Top nav ---------- */}
@@ -102,9 +117,10 @@ export default async function DemoPage({
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <VoiceWidget
-                agentId={cfg.platformConfig.agentId}
+                agentId={cfg.platformConfig.agentId ?? cfg.platformConfig.configId ?? ""}
                 platform={platform}
                 accent={accent}
+                tenant={cfg.slug}
               />
             </div>
 
@@ -137,22 +153,25 @@ export default async function DemoPage({
                 <span className="ml-2 text-xs text-gray-400">Live conversation</span>
               </div>
               <div className="mt-5 space-y-3 text-sm">
-                <Bubble side="agent" color={primary}>
-                  Hi, this is {cfg.name}. Are you looking to sell a property?
-                </Bubble>
-                <Bubble side="user">
-                  Yes, I inherited a house and need to sell quickly.
-                </Bubble>
-                <Bubble side="agent" color={primary}>
-                  I can help with that. What’s the property address and condition?
-                </Bubble>
-                <div
-                  className="mt-4 flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium"
-                  style={{ background: `${accent}18`, color: primary }}
-                >
-                  <span>✓ Lead created · Motivation score: 88/100</span>
-                  <span>Consultation booked</span>
-                </div>
+                {(
+                  landing.conversation?.turns ?? [
+                    { side: "agent" as const, text: `Hi, this is ${cfg.name}. How can I help you today?` },
+                  ]
+                ).map((turn, i) => (
+                  <Bubble key={i} side={turn.side} color={primary}>
+                    {turn.text}
+                  </Bubble>
+                ))}
+                {landing.conversation?.outcomes?.length ? (
+                  <div
+                    className="mt-4 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                    style={{ background: `${accent}18`, color: primary }}
+                  >
+                    {landing.conversation.outcomes.map((outcome, i) => (
+                      <span key={i}>{outcome}</span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

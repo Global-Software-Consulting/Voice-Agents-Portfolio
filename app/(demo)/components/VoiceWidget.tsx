@@ -1,17 +1,23 @@
 // "Talk To Agent" widget. For ElevenLabs we embed the official ConvAI widget
-// (loads the vendor SDK on demand). Other platforms get their own branch here as
-// they're added. Degrades to a clear hint when no agent id is configured.
+// (loads the vendor SDK on demand). For Hume we lazy-load the EVI React SDK via
+// HumeWidget. Other platforms get their own branch here as they're added.
+// Degrades to a clear hint when no agent id is configured.
 "use client";
 
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy + client-only so the Hume SDK never ships for non-Hume tenants or SSR.
+const HumeWidget = dynamic(() => import("./HumeWidget"), { ssr: false });
 
 type Props = {
   agentId: string;
   platform: string;
   accent: string;
+  tenant: string;
 };
 
-export function VoiceWidget({ agentId, platform, accent }: Props) {
+export function VoiceWidget({ agentId, platform, accent, tenant }: Props) {
   useEffect(() => {
     if (platform !== "elevenlabs" || !agentId) return;
     const scriptId = "elevenlabs-convai-embed";
@@ -25,11 +31,15 @@ export function VoiceWidget({ agentId, platform, accent }: Props) {
   }, [platform, agentId]);
 
   if (!agentId) {
+    // Platform-specific env hint when the demo isn't wired to a live agent yet.
+    const envVar =
+      platform === "hume"
+        ? "NEXT_PUBLIC_HUME_CONFIG_ID"
+        : "NEXT_PUBLIC_ELEVENLABS_AGENT_ID";
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white/70 p-4 text-sm text-gray-500">
-        🎤 <strong>Talk To Agent</strong> — set{" "}
-        <code>NEXT_PUBLIC_ELEVENLABS_AGENT_ID</code> in <code>.env.local</code> to
-        enable the live voice widget.
+        🎤 <strong>Talk To Agent</strong> — set <code>{envVar}</code> in{" "}
+        <code>.env.local</code> to enable the live voice widget.
       </div>
     );
   }
@@ -44,6 +54,10 @@ export function VoiceWidget({ agentId, platform, accent }: Props) {
         }}
       />
     );
+  }
+
+  if (platform === "hume") {
+    return <HumeWidget tenant={tenant} configId={agentId} accent={accent} />;
   }
 
   return (

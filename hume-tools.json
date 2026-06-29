@@ -1,0 +1,75 @@
+{
+  "_note": "Tool (function) configs for the Lexora Hume EVI agent. UNLIKE ElevenLabs, these have NO webhook URL: Hume delivers tool calls over the EVI WebSocket and the browser handles them (app/(demo)/components/HumeWidget.tsx -> onToolCall), which forwards to POST /api/functions/hume?tenant=lexora&fn=<tool name> and returns the result to Hume. Therefore the tool `name` MUST exactly match a handler in lib/functions/handlers.ts (createCaseIntake | saveInjuryInformation | emotionAnalysis | bookConsultation) because the widget routes by name. HOW TO CREATE — Dashboard: platform.hume.ai -> EVI -> Tools -> New tool, paste `name`, `description`, and the `parameters` object below (the UI accepts JSON Schema). API: POST https://api.hume.ai/v0/evi/tools with header `X-Hume-Api-Key: $HUME_API_KEY`; the API requires `parameters` to be a STRINGIFIED JSON Schema, so JSON.stringify(the parameters object shown here). After creating the tools, attach them to an EVI Config (EVI -> Configs), set the system prompt from lib/tenants/lexora.ts (agentPrompt), ENABLE the prosody/emotion model, and copy the Config ID into NEXT_PUBLIC_HUME_CONFIG_ID. The emotionAnalysis tool is optional for the agent — HumeWidget already auto-sends caller emotion from prosody scores — but it's included per the PDF so the agent can also log a reading.",
+  "_api_example": "curl -X POST https://api.hume.ai/v0/evi/tools -H \"X-Hume-Api-Key: $HUME_API_KEY\" -H \"Content-Type: application/json\" -d '{\"name\":\"createCaseIntake\",\"parameters\":\"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"name\\\":{\\\"type\\\":\\\"string\\\"}},\\\"required\\\":[\\\"name\\\"]}\",\"description\":\"...\",\"fallback_content\":\"...\"}'",
+  "tools": [
+    {
+      "name": "createCaseIntake",
+      "description": "Open a new case file as soon as you have the caller's name. Call once near the start of the conversation. Returns a leadId you must reuse in the later tools.",
+      "fallback_content": "I'm having trouble opening your case file right now, but I've noted your details and we'll follow up.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "The caller's full name." },
+          "phone": { "type": "string", "description": "The caller's phone number." },
+          "email": { "type": "string", "description": "The caller's email address." },
+          "accidentType": { "type": "string", "description": "Type of accident, e.g. car accident, slip and fall, workplace injury." },
+          "accidentDate": { "type": "string", "description": "When the accident happened, e.g. a date or 'last Tuesday'." }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "saveInjuryInformation",
+      "description": "Save accident and injury details as you learn them. Pass the leadId returned by createCaseIntake.",
+      "fallback_content": "I couldn't save that just now, but I've made a note of it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "leadId": { "type": "string", "description": "The case id returned by createCaseIntake." },
+          "injuries": { "type": "string", "description": "Injuries the caller sustained." },
+          "treatment": { "type": "string", "description": "Any medical treatment received so far." },
+          "atFault": { "type": "string", "description": "Who was at fault, if the caller knows." },
+          "otherParty": { "type": "string", "description": "The other party involved, if any (e.g. another driver, a business)." }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "emotionAnalysis",
+      "description": "Record the caller's emotional state and overall sentiment. The web app also captures this automatically from voice prosody; call this only if you want to log an explicit reading. Pass the leadId when you have one.",
+      "fallback_content": "Noted.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "leadId": { "type": "string", "description": "The case id returned by createCaseIntake." },
+          "dominantEmotion": { "type": "string", "description": "The caller's dominant emotion, e.g. Distress, Anxiety, Calmness, Relief." },
+          "sentiment": { "type": "string", "description": "Overall sentiment of the caller.", "enum": ["negative", "neutral", "positive"] },
+          "intensity": { "type": "number", "description": "Strength of the dominant emotion, from 0 to 1." }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "bookConsultation",
+      "description": "Book a consultation with an attorney when the caller is ready. Pass the leadId from createCaseIntake plus the preferred date and time.",
+      "fallback_content": "I'm having trouble booking that slot right now — our team will call you to confirm a time.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "leadId": { "type": "string", "description": "The case id returned by createCaseIntake." },
+          "date": { "type": "string", "description": "Preferred consultation date (YYYY-MM-DD)." },
+          "time": { "type": "string", "description": "Preferred consultation time, e.g. 14:00 or '2 PM'." }
+        },
+        "required": []
+      }
+    }
+  ],
+  "config_hint": {
+    "_note": "When creating the EVI Config that uses these tools, mirror these settings.",
+    "name": "Lexora AI — Legal Intake",
+    "system_prompt_source": "lib/tenants/lexora.ts -> agentPrompt",
+    "enable_prosody_model": true,
+    "tools": ["createCaseIntake", "saveInjuryInformation", "emotionAnalysis", "bookConsultation"],
+    "after_creation": "Copy the resulting Config ID into NEXT_PUBLIC_HUME_CONFIG_ID in .env.local, then restart the dev server."
+  }
+}

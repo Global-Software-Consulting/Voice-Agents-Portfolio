@@ -7,18 +7,18 @@
 
 import type { TenantConfig } from "./types";
 import { nestriq } from "./nestriq";
+import { lexora } from "./lexora";
 
 // import { callora } from "./callora";
 // import { medelynx } from "./medelynx";
-// import { lexora } from "./lexora";
 // import { qualivo } from "./qualivo";
 // import { voxium } from "./voxium";
 
 export const TENANTS: Record<string, TenantConfig> = {
   nestriq,
+  lexora,
   // callora,
   // medelynx,
-  // lexora,
   // qualivo,
   // voxium,
 };

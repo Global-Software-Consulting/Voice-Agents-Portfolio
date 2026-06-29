@@ -6,7 +6,13 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import type { Call, DashboardData, Lead, Transcript } from "@/lib/admin/data";
-import { TENANT_META, tenantColor, tenantMeta } from "@/lib/admin/tenants-meta";
+import {
+  TENANT_META,
+  tenantColor,
+  tenantMeta,
+  tenantLexicon,
+  type Lexicon,
+} from "@/lib/admin/tenants-meta";
 import { BarChart, DonutChart, LineChart, type Point, type Series } from "./charts";
 import { TranscriptModal } from "./TranscriptModal";
 import { Icon } from "./icons";
@@ -26,6 +32,7 @@ type SectionId =
   | "leads"
   | "appointments"
   | "transcripts"
+  | "emotion"
   | "activity"
   | "functions";
 
@@ -61,9 +68,11 @@ type Filtered = {
 export default function DashboardClient({
   data,
   initialTenant = "all",
+  lockedTenant,
 }: {
   data: DashboardData;
   initialTenant?: string;
+  lockedTenant?: string;
 }) {
   const [section, setSection] = useState<SectionId>("overview");
   const [collapsed, setCollapsed] = useState(false);
@@ -150,11 +159,40 @@ export default function DashboardClient({
     return ordered.length ? ordered : TENANT_META;
   }, [data]);
 
+  // Vocabulary + nav for the selected tenant: relabel "Leads" → "Cases"/"Patients",
+  // hide sections that don't apply, and add "Emotional Analysis" for emotion-capable
+  // demos (Lexora/Hume). "All demos" uses generic terms with no emotion section.
+  const lexicon = tenantLexicon(tenant);
+  const nav = useMemo(() => {
+    const base = NAV.filter((n) => !lexicon.hiddenSections.includes(n.id)).map((n) =>
+      n.id === "leads" ? { ...n, label: lexicon.leads } : n,
+    );
+    if (!lexicon.emotion) return base;
+    const item = {
+      id: "emotion" as SectionId,
+      label: "Emotional Analysis",
+      icon: Icon.heart,
+    };
+    const at = base.findIndex((n) => n.id === "transcripts");
+    return at === -1
+      ? [...base, item]
+      : [...base.slice(0, at + 1), item, ...base.slice(at + 1)];
+  }, [lexicon]);
+
+  // Render the selected section only if it's available for this tenant; otherwise
+  // fall back to overview (without mutating state, so the choice returns on "All
+  // demos"). Covers both hidden sections and the conditional emotion section.
+  const navIds = useMemo(() => new Set(nav.map((n) => n.id)), [nav]);
+  const effectiveSection: SectionId = navIds.has(section) ? section : "overview";
+
+  const title = nav.find((n) => n.id === effectiveSection)?.label ?? "Overview";
+
   return (
     <div className="flex min-h-screen bg-gray-50 text-gray-900">
       {/* ---- Sidebar ---- */}
       <Sidebar
-        section={section}
+        nav={nav}
+        section={effectiveSection}
         setSection={(s) => {
           setSection(s);
           setMobileNav(false);
@@ -168,40 +206,49 @@ export default function DashboardClient({
       {/* ---- Main column ---- */}
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar
-          title={NAV.find((n) => n.id === section)!.label}
+          title={title}
           collapsed={collapsed}
           toggleCollapse={() => setCollapsed((c) => !c)}
           openMobile={() => setMobileNav(true)}
           tenant={tenant}
           setTenant={setTenant}
           tenants={activeTenants}
+          lockTenant={!!lockedTenant}
           range={range}
           setRange={setRange}
           profileOpen={profileOpen}
           setProfileOpen={setProfileOpen}
           query={query}
           setQuery={setQuery}
-          searchable={section !== "overview"}
+          searchable={effectiveSection !== "overview"}
         />
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           {!data.connected && <DisconnectedBanner error={data.error} />}
 
-          {section === "overview" && <Overview f={f} />}
-          {section === "calls" && <CallsView rows={f.calls} query={query} />}
-          {section === "leads" && (
-            <LeadsView rows={f.leads} query={query} onSelect={setSelectedLead} />
+          {effectiveSection === "overview" && <Overview f={f} lex={lexicon} />}
+          {effectiveSection === "calls" && <CallsView rows={f.calls} query={query} />}
+          {effectiveSection === "leads" && (
+            <LeadsView
+              rows={f.leads}
+              query={query}
+              onSelect={setSelectedLead}
+              lex={lexicon}
+            />
           )}
-          {section === "appointments" && (
+          {effectiveSection === "appointments" && (
             <AppointmentsView rows={f.appointments} query={query} />
           )}
-          {section === "transcripts" && (
+          {effectiveSection === "transcripts" && (
             <TranscriptsView rows={f.transcripts} query={query} />
           )}
-          {section === "activity" && (
+          {effectiveSection === "emotion" && (
+            <EmotionView rows={f.agentEvents} query={query} />
+          )}
+          {effectiveSection === "activity" && (
             <ActivityView rows={f.agentEvents} query={query} />
           )}
-          {section === "functions" && (
+          {effectiveSection === "functions" && (
             <FunctionsView rows={f.functionCalls} query={query} />
           )}
         </main>
@@ -222,12 +269,14 @@ export default function DashboardClient({
 /* ============================== Sidebar ============================== */
 
 function Sidebar({
+  nav,
   section,
   setSection,
   collapsed,
   mobileNav,
   closeMobile,
 }: {
+  nav: typeof NAV;
   section: SectionId;
   setSection: (s: SectionId) => void;
   collapsed: boolean;
@@ -268,7 +317,7 @@ function Sidebar({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const active = section === item.id;
             const I = item.icon;
             return (
@@ -318,6 +367,7 @@ function Navbar({
   tenant,
   setTenant,
   tenants,
+  lockTenant,
   range,
   setRange,
   profileOpen,
@@ -333,6 +383,7 @@ function Navbar({
   tenant: string;
   setTenant: (t: string) => void;
   tenants: typeof TENANT_META;
+  lockTenant: boolean;
   range: RangeId;
   setRange: (r: RangeId) => void;
   profileOpen: boolean;
@@ -374,14 +425,20 @@ function Navbar({
           </label>
         )}
 
-        <Select
-          value={tenant}
-          onChange={setTenant}
-          options={[
-            { value: "all", label: "All demos" },
-            ...tenants.map((t) => ({ value: t.slug, label: t.name })),
-          ]}
-        />
+        {lockTenant ? (
+          <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
+            {tenantMeta(tenant).name}
+          </span>
+        ) : (
+          <Select
+            value={tenant}
+            onChange={setTenant}
+            options={[
+              { value: "all", label: "All demos" },
+              ...tenants.map((t) => ({ value: t.slug, label: t.name })),
+            ]}
+          />
+        )}
 
         <Select
           value={range}
@@ -494,7 +551,7 @@ function Select({
 
 /* ============================== Overview ============================== */
 
-function Overview({ f }: { f: Filtered }) {
+function Overview({ f, lex }: { f: Filtered; lex: Lexicon }) {
   const totalCalls = f.calls.length;
   const totalLeads = f.leads.length;
   const booked = f.appointments.length;
@@ -541,7 +598,7 @@ function Overview({ f }: { f: Filtered }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Total Calls" value={totalCalls} icon={<Icon.phone />} tint="#0f766e" />
-        <Kpi label="Total Leads" value={totalLeads} icon={<Icon.users />} tint="#2563eb" />
+        <Kpi label={`Total ${lex.leads}`} value={totalLeads} icon={<Icon.users />} tint="#2563eb" />
         <Kpi label="Appointments" value={booked} icon={<Icon.calendar />} tint="#7c3aed" />
         <Kpi
           label="Avg Call Time"
@@ -555,7 +612,7 @@ function Overview({ f }: { f: Filtered }) {
         <Card title="Calls over time" subtitle="Daily volume" className="lg:col-span-2">
           <LineChart data={callsPerDay} color={BRAND} />
         </Card>
-        <Card title="Leads by status" subtitle={`${totalLeads} total`}>
+        <Card title={`${lex.leads} by status`} subtitle={`${totalLeads} total`}>
           <DonutChart data={leadStatus} />
         </Card>
       </div>
@@ -564,12 +621,12 @@ function Overview({ f }: { f: Filtered }) {
         <Card title="Calls by demo" subtitle="Across tenants" className="lg:col-span-2">
           <BarChart data={callsByTenant} />
         </Card>
-        <Card title="Conversion" subtitle="Leads → appointments">
+        <Card title="Conversion" subtitle={`${lex.leads} → appointments`}>
           <div className="flex h-[220px] flex-col items-center justify-center">
             <div className="text-5xl font-bold text-gray-900">{conversion}%</div>
             <div className="mt-2 flex items-center gap-1 text-sm text-emerald-600">
               <Icon.trendUp />
-              {booked} of {totalLeads} leads booked
+              {booked} of {totalLeads} {lex.leads.toLowerCase()} booked
             </div>
             <div className="mt-4 h-2.5 w-40 overflow-hidden rounded-full bg-gray-100">
               <div
@@ -636,39 +693,153 @@ function LeadsView({
   rows,
   query,
   onSelect,
+  lex,
 }: {
   rows: DashboardData["leads"];
   query: string;
   onSelect: (lead: Lead) => void;
+  lex: Lexicon;
 }) {
   const filtered = search(rows, query, (l) => [l.tenant, l.name, l.email, l.phone, l.status]);
+  const columns: Column<Lead>[] = [
+    { label: "Demo", cell: (l) => <TenantBadge slug={l.tenant} /> },
+    { label: "Name", cell: (l) => l.name ?? "—" },
+    { label: "Contact", cell: (l) => l.phone ?? l.email ?? "—" },
+    // Score column only where a numeric score is meaningful for the demo.
+    ...(lex.showScore
+      ? [{ label: lex.scoreLabel, cell: (l: Lead) => <ScoreBadge score={l.score} /> }]
+      : []),
+    { label: "Status", cell: (l) => <StatusBadge status={l.status} /> },
+    { label: "Created", cell: (l) => fmtDate(l.created_at), className: "text-gray-500" },
+    {
+      label: "",
+      cell: () => (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-teal-600">
+          <Icon.message width={14} height={14} /> Transcript
+        </span>
+      ),
+    },
+  ];
   return (
     <Card
-      title="Leads"
+      title={lex.leads}
       subtitle={`${filtered.length} records · click a row to view the call transcript`}
     >
       <DataTable
         rows={filtered}
-        empty="No leads match the current filters."
+        empty={`No ${lex.leads.toLowerCase()} match the current filters.`}
         onRowClick={onSelect}
-        columns={[
-          { label: "Demo", cell: (l) => <TenantBadge slug={l.tenant} /> },
-          { label: "Name", cell: (l) => l.name ?? "—" },
-          { label: "Contact", cell: (l) => l.phone ?? l.email ?? "—" },
-          { label: "Score", cell: (l) => <ScoreBadge score={l.score} /> },
-          { label: "Status", cell: (l) => <StatusBadge status={l.status} /> },
-          { label: "Created", cell: (l) => fmtDate(l.created_at), className: "text-gray-500" },
-          {
-            label: "",
-            cell: () => (
-              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-teal-600">
-                <Icon.message width={14} height={14} /> Transcript
-              </span>
-            ),
-          },
-        ]}
+        columns={columns}
       />
     </Card>
+  );
+}
+
+/* ----------------------- Emotional Analysis (Lexora) ---------------------- */
+
+type EmotionRow = {
+  id: string;
+  tenant: string;
+  dominant: string;
+  sentiment: string;
+  intensity: number | null;
+  created_at: string;
+};
+
+function sentimentColor(sentiment: string): string {
+  if (sentiment === "negative") return "#dc2626";
+  if (sentiment === "positive") return "#16a34a";
+  return "#64748b";
+}
+
+function SentimentPill({ sentiment }: { sentiment: string }) {
+  const c = sentimentColor(sentiment);
+  return (
+    <span
+      className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
+      style={{ background: `${c}1a`, color: c }}
+    >
+      {sentiment}
+    </span>
+  );
+}
+
+function EmotionView({
+  rows,
+  query,
+}: {
+  rows: DashboardData["agentEvents"];
+  query: string;
+}) {
+  const parsed: EmotionRow[] = rows
+    .filter((e) => e.event_type === "emotion_analysis")
+    .map((e) => {
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      return {
+        id: e.id,
+        tenant: e.tenant,
+        dominant: typeof p.dominant === "string" ? p.dominant : "—",
+        sentiment: typeof p.sentiment === "string" ? p.sentiment : "neutral",
+        intensity: typeof p.intensity === "number" ? p.intensity : null,
+        created_at: e.created_at,
+      };
+    });
+
+  const filtered = search(parsed, query, (r) => [r.tenant, r.dominant, r.sentiment]);
+  const counts = countBy(parsed, (r) => r.sentiment);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-4">
+        {(["negative", "neutral", "positive"] as const).map((s) => (
+          <div key={s} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-sm capitalize text-gray-500">{s}</span>
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: sentimentColor(s) }}
+              />
+            </div>
+            <div className="mt-2 text-2xl font-bold tracking-tight">{counts[s] ?? 0}</div>
+          </div>
+        ))}
+      </div>
+
+      <Card title="Emotional Analysis" subtitle={`${filtered.length} readings · from Hume voice analysis`}>
+        <DataTable
+          rows={filtered}
+          empty="No emotional analysis recorded yet."
+          columns={[
+            { label: "Demo", cell: (r) => <TenantBadge slug={r.tenant} /> },
+            { label: "Dominant emotion", cell: (r) => <span className="font-medium">{r.dominant}</span> },
+            { label: "Sentiment", cell: (r) => <SentimentPill sentiment={r.sentiment} /> },
+            {
+              label: "Intensity",
+              cell: (r) =>
+                r.intensity == null ? (
+                  "—"
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, r.intensity * 100))}%`,
+                          background: sentimentColor(r.sentiment),
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {Math.round(r.intensity * 100)}%
+                    </span>
+                  </div>
+                ),
+            },
+            { label: "Time", cell: (r) => fmtDate(r.created_at), className: "text-gray-500" },
+          ]}
+        />
+      </Card>
+    </div>
   );
 }
 
@@ -969,11 +1140,15 @@ function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
+  // Pin locale + timeZone so server and client render the same string (avoids
+  // a hydration mismatch). UTC keeps the dashboard's time basis consistent with
+  // bucketByDay; switch timeZone here if you want a specific business TZ.
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }
 
@@ -1004,7 +1179,15 @@ function bucketByDay<T>(rows: T[], getTs: (r: T) => string | null): Point[] {
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const key = d.toISOString().slice(0, 10);
     out.push({
-      label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      // Pin locale + timeZone so SSR (Node) and the browser produce the
+      // identical string — otherwise the order ("Jun 24" vs "24 Jun") differs
+      // by runtime locale and React throws a hydration mismatch. Keys are UTC
+      // dates, so format in UTC to keep the label on the right bucket day.
+      label: d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }),
       value: counts.get(key) ?? 0,
     });
   }

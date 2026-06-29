@@ -29,6 +29,37 @@ function motivationScore(args: Args): number {
   return Math.max(0, Math.min(100, score));
 }
 
+// Lexora: normalize Hume's emotion signals (forwarded by the widget) into one
+// canonical shape for storage + display. Derives sentiment/valence when the
+// widget only sends a dominant emotion. See docs/PLAN-lexora.md §3.
+type EmotionSummary = {
+  dominant: string;
+  sentiment: "negative" | "neutral" | "positive";
+  intensity?: number;
+  valence: number; // -1..1
+};
+function summarizeEmotions(args: Args): EmotionSummary {
+  const dominant = str(args.dominantEmotion ?? args.dominant) ?? "Neutral";
+  const intensityRaw = Number(args.intensity ?? args.score);
+  const intensity = Number.isFinite(intensityRaw) ? intensityRaw : undefined;
+
+  const explicit = str(args.sentiment)?.toLowerCase();
+  const sentiment: EmotionSummary["sentiment"] =
+    explicit === "negative" || explicit === "neutral" || explicit === "positive"
+      ? explicit
+      : /distress|anxiet|fear|sad|anger|pain|disappoint|tired/i.test(dominant)
+        ? "negative"
+        : /calm|relief|joy|content|hope|satisf|gratitude/i.test(dominant)
+          ? "positive"
+          : "neutral";
+
+  const magnitude = intensity ?? 0.5;
+  const valence =
+    sentiment === "negative" ? -magnitude : sentiment === "positive" ? magnitude : 0;
+
+  return { dominant, sentiment, intensity, valence };
+}
+
 const handlers: Record<string, Handler> = {
   // Create a new lead in the shared leads table.
   createLead: async (args, ctx) => {
@@ -58,13 +89,43 @@ const handlers: Record<string, Handler> = {
     return { score };
   },
 
-  // Book a consultation appointment.
+  // Book a consultation appointment (shared by Nestriq and Lexora).
   bookConsultation: async (args, ctx) => {
     const appointmentId = await bookAppointment(ctx.tenantId, str(args.leadId) ?? null, {
       date: str(args.date),
       time: str(args.time),
     });
     return { appointmentId };
+  },
+
+  // --- Lexora (Hume) ---------------------------------------------------------
+
+  // Open a new case file for an injured caller.
+  createCaseIntake: async (args, ctx) => {
+    const leadId = await createLead(ctx.tenantId, ctx.slug, {
+      name: str(args.name ?? args.full_name),
+      email: str(args.email),
+      phone: str(args.phone),
+      industry: "Personal Injury Law",
+    });
+    await logAgentEvent(ctx.tenantId, ctx.callId, "case_intake", args);
+    return { leadId };
+  },
+
+  // Save accident / injury details captured during the call (logged as an event).
+  saveInjuryInformation: async (args, ctx) => {
+    await logAgentEvent(ctx.tenantId, ctx.callId, "injury_info", args);
+    if (str(args.leadId)) {
+      await updateLead(str(args.leadId)!, { status: "qualifying" });
+    }
+    return { saved: true };
+  },
+
+  // Record the caller's emotional state + sentiment (Lexora's differentiator).
+  emotionAnalysis: async (args, ctx) => {
+    const emotion = summarizeEmotions(args);
+    await logAgentEvent(ctx.tenantId, ctx.callId, "emotion_analysis", emotion);
+    return emotion;
   },
 };
 

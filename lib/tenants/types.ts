@@ -33,6 +33,10 @@ export type ServiceItem = { title: string; description: string; icon?: string };
 export type HowStep = { title: string; description: string };
 export type Stat = { value: string; label: string };
 export type Faq = { q: string; a: string };
+export type ConversationTurn = { side: "agent" | "user"; text: string };
+// The illustrative "Live conversation" card in the hero. Per-tenant so the
+// sample dialogue + outcomes match the demo's industry (real estate, law, …).
+export type HeroConversation = { turns: ConversationTurn[]; outcomes: string[] };
 
 export type LandingContent = {
   hero: string;
@@ -45,6 +49,7 @@ export type LandingContent = {
   steps?: HowStep[]; // "how it works" steps
   stats?: Stat[]; // headline numbers
   faqs?: Faq[]; // frequently asked questions
+  conversation?: HeroConversation; // sample dialogue shown in the hero card
 };
 
 export type TenantConfig = {

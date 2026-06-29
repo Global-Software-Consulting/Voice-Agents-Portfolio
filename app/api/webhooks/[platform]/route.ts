@@ -6,6 +6,7 @@
 
 import { getAdapter } from "@/lib/adapters";
 import { verifyElevenLabsSignature } from "@/lib/adapters/elevenlabs";
+import { verifyHumeSignature, fetchHumeTranscript } from "@/lib/adapters/hume";
 import { ensureTenant } from "@/lib/api/tenants";
 import { ensureCall, closeCall } from "@/lib/api/calls";
 import { saveTranscript } from "@/lib/api/transcripts";
@@ -33,6 +34,17 @@ export async function POST(
       }
     }
 
+    if (platform === "hume") {
+      const secret = process.env.HUME_WEBHOOK_SECRET;
+      if (secret) {
+        const sig = req.headers.get("x-hume-ai-webhook-signature") ?? "";
+        const ts = req.headers.get("x-hume-ai-webhook-timestamp") ?? "";
+        if (!verifyHumeSignature(raw, sig, ts, secret)) {
+          return Response.json({ error: "invalid signature" }, { status: 401 });
+        }
+      }
+    }
+
     let body: unknown = {};
     try {
       body = raw ? JSON.parse(raw) : {};
@@ -52,6 +64,21 @@ export async function POST(
 
     const tenantId = await ensureTenant(event.tenant);
     const callId = await ensureCall(tenantId, event.tenant, event.externalCallId);
+
+    // Hume's webhook is metadata-only; on chat end, fetch the transcript from its
+    // API so the same call row (keyed by chat_id) gets the conversation text.
+    if (
+      platform === "hume" &&
+      event.type === "summary" &&
+      event.externalCallId &&
+      !event.transcript
+    ) {
+      const fetched = await fetchHumeTranscript(event.externalCallId);
+      if (fetched) {
+        event.transcript = fetched.transcript;
+        event.summary = event.summary ?? fetched.summary;
+      }
+    }
 
     if (callId && (event.transcript || event.summary)) {
       await saveTranscript(callId, {

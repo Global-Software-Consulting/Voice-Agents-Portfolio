@@ -57,12 +57,13 @@ function fmtDate(iso?: string | null): string {
   const d = new Date(iso);
   return isNaN(d.getTime())
     ? "—"
-    : d.toLocaleString(undefined, {
+    : d.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "UTC",
       });
 }
 
