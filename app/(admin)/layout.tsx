@@ -3,7 +3,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Admin Console — GSoft Voice",
+  // `absolute` so the root layout's "%s · …" template isn't appended.
+  title: { absolute: "Admin Console · GSoft AI Voice Agents" },
   description: "Cross-tenant analytics for the GSoft AI Voice Agent demos.",
 };
 

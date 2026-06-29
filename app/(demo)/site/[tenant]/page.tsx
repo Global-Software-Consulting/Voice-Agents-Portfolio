@@ -1,10 +1,27 @@
 // Per-tenant demo landing page. middleware rewrites <tenant>.<host>/ to /site/<tenant>.
 // One set of files renders every demo; all content comes from the tenant config.
 
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getTenant } from "@/lib/tenants/registry";
 import { VoiceWidget } from "../../components/VoiceWidget";
+
+// Per-tenant page title/description (root layout adds the "· GSoft AI Voice Agents"
+// suffix). This is what replaces the old "Create Next App" title on each demo.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenant: string }>;
+}): Promise<Metadata> {
+  const { tenant } = await params;
+  const cfg = getTenant(tenant);
+  if (!cfg) return {};
+  return {
+    title: cfg.name,
+    description: cfg.branding.tagline ?? cfg.landing.concept,
+  };
+}
 
 // Build the admin-dashboard URL for this tenant from the current host.
 // Priority:
@@ -55,7 +72,7 @@ export default async function DemoPage({
   const host = (await headers()).get("host") ?? "voice.gsoftconsulting.com";
   const dashboardHref = adminUrl(host, cfg.slug);
 
-  console.log("========url======", dashboardHref)
+
   return (
     <main className="min-h-screen bg-white text-gray-900">
       {/* ---------- Top nav ---------- */}

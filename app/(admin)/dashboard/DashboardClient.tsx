@@ -4,7 +4,7 @@
 // server page and filters/aggregates with useMemo so every control is instant.
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Call, DashboardData, Lead, Transcript } from "@/lib/admin/data";
 import {
   TENANT_META,
@@ -55,6 +55,33 @@ const RANGES: { id: RangeId; label: string; days: number | null }[] = [
 ];
 
 const BRAND = "#0f766e";
+const ADMIN_EMAIL = "admin@gmail.com";
+
+// Admin preferences, persisted per-device in localStorage. Loaded after mount
+// (never during render) so SSR and the client agree.
+const SETTINGS_KEY = "gsoft.admin.settings";
+type AdminSettings = { range?: RangeId; collapsed?: boolean };
+
+function loadSettings(): AdminSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(SETTINGS_KEY) ?? "{}") as AdminSettings;
+  } catch {
+    return {};
+  }
+}
+
+function saveSetting(patch: AdminSettings) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ ...loadSettings(), ...patch }),
+    );
+  } catch {
+    /* ignore quota / privacy-mode errors */
+  }
+}
 
 type Filtered = {
   calls: DashboardData["calls"];
@@ -88,8 +115,21 @@ export default function DashboardClient({
   const [range, setRange] = useState<RangeId>("30d");
   const [query, setQuery] = useState("");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  // Profile / Settings modal (null = closed).
+  const [modal, setModal] = useState<null | "profile" | "settings">(null);
   // Capture "now" once on mount so date-range filtering is stable across renders.
   const [now] = useState(() => Date.now());
+
+  // Apply persisted admin preferences once on mount. Reading localStorage during
+  // render would cause an SSR/client mismatch, so we sync from this external store
+  // after mount — the legitimate exception to the set-state-in-effect rule.
+  useEffect(() => {
+    const s = loadSettings();
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (s.range) setRange(s.range);
+    if (typeof s.collapsed === "boolean") setCollapsed(s.collapsed);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   // Lead -> call -> transcript resolution. Built from the FULL dataset (not the
   // filtered view) so a transcript still opens even if its call falls outside
@@ -218,6 +258,8 @@ export default function DashboardClient({
           setRange={setRange}
           profileOpen={profileOpen}
           setProfileOpen={setProfileOpen}
+          onOpenProfile={() => setModal("profile")}
+          onOpenSettings={() => setModal("settings")}
           query={query}
           setQuery={setQuery}
           searchable={effectiveSection !== "overview"}
@@ -260,6 +302,19 @@ export default function DashboardClient({
           call={resolved?.call ?? null}
           transcript={resolved?.transcript ?? null}
           onClose={() => setSelectedLead(null)}
+        />
+      )}
+
+      {modal === "profile" && (
+        <ProfileModal lockedTenant={lockedTenant} onClose={() => setModal(null)} />
+      )}
+      {modal === "settings" && (
+        <SettingsModal
+          range={range}
+          setRange={setRange}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          onClose={() => setModal(null)}
         />
       )}
     </div>
@@ -372,6 +427,8 @@ function Navbar({
   setRange,
   profileOpen,
   setProfileOpen,
+  onOpenProfile,
+  onOpenSettings,
   query,
   setQuery,
   searchable,
@@ -388,6 +445,8 @@ function Navbar({
   setRange: (r: RangeId) => void;
   profileOpen: boolean;
   setProfileOpen: (b: boolean) => void;
+  onOpenProfile: () => void;
+  onOpenSettings: () => void;
   query: string;
   setQuery: (q: string) => void;
   searchable: boolean;
@@ -479,14 +538,25 @@ function Navbar({
               <div className="absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
                 <div className="border-b border-gray-100 px-4 py-3">
                   <div className="text-sm font-semibold">Admin</div>
-                  <div className="truncate text-xs text-gray-500">
-                    aiagent05@gsoftconsulting.com
-                  </div>
+                  <div className="truncate text-xs text-gray-500">{ADMIN_EMAIL}</div>
                 </div>
                 <div className="p-1">
-                  <MenuItem icon={<Icon.user />} label="Profile" />
-                  <MenuItem icon={<Icon.settings />} label="Settings" />
-                  <MenuItem icon={<Icon.bell />} label="Notifications" />
+                  <MenuItem
+                    icon={<Icon.user />}
+                    label="Profile"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      onOpenProfile();
+                    }}
+                  />
+                  <MenuItem
+                    icon={<Icon.settings />}
+                    label="Settings"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      onOpenSettings();
+                    }}
+                  />
                 </div>
                 <div className="border-t border-gray-100 p-1">
                   <MenuItem icon={<Icon.logout />} label="Sign out" danger onClick={signOut} />
@@ -531,6 +601,163 @@ async function signOut() {
   } finally {
     window.location.reload();
   }
+}
+
+/* ============================== Profile / Settings ============================== */
+
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <button
+        aria-hidden
+        onClick={onClose}
+        className="fixed inset-0 z-40 cursor-default bg-black/30"
+      />
+      <div className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100"
+            aria-label="Close"
+          >
+            <Icon.x />
+          </button>
+        </div>
+        {children}
+      </div>
+    </>
+  );
+}
+
+function ProfileModal({
+  lockedTenant,
+  onClose,
+}: {
+  lockedTenant?: string;
+  onClose: () => void;
+}) {
+  const deployment = lockedTenant
+    ? `${tenantMeta(lockedTenant).name} (single-tenant)`
+    : "All demos (wildcard)";
+  return (
+    <ModalShell title="Profile" onClose={onClose}>
+      <div className="flex items-center gap-3">
+        <span
+          className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold text-white"
+          style={{ background: BRAND }}
+        >
+          A
+        </span>
+        <div>
+          <div className="font-semibold">Admin</div>
+          <div className="text-sm text-gray-500">{ADMIN_EMAIL}</div>
+        </div>
+      </div>
+      <dl className="mt-5 space-y-2 text-sm">
+        <InfoRow label="Role" value="Administrator" />
+        <InfoRow label="Deployment" value={deployment} />
+      </dl>
+      <button
+        onClick={signOut}
+        className="mt-6 w-full rounded-lg bg-rose-50 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
+      >
+        Sign out
+      </button>
+    </ModalShell>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="font-medium text-gray-900">{value}</dd>
+    </div>
+  );
+}
+
+function SettingsModal({
+  range,
+  setRange,
+  collapsed,
+  setCollapsed,
+  onClose,
+}: {
+  range: RangeId;
+  setRange: (r: RangeId) => void;
+  collapsed: boolean;
+  setCollapsed: (b: boolean) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ModalShell title="Settings" onClose={onClose}>
+      <div className="space-y-5 text-sm">
+        <div>
+          <label className="mb-1 block font-medium text-gray-700">Default time range</label>
+          <Select
+            value={range}
+            onChange={(v) => {
+              setRange(v as RangeId);
+              saveSetting({ range: v as RangeId });
+            }}
+            options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Applied to every view and remembered on this device.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium text-gray-700">Collapse sidebar by default</div>
+            <p className="text-xs text-gray-400">Start with a compact sidebar.</p>
+          </div>
+          <Toggle
+            checked={collapsed}
+            onChange={(v) => {
+              setCollapsed(v);
+              saveSetting({ collapsed: v });
+            }}
+          />
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="relative h-6 w-11 shrink-0 rounded-full transition"
+      style={{ background: checked ? BRAND : "#e5e7eb" }}
+    >
+      <span
+        className={[
+          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
+          checked ? "left-[22px]" : "left-0.5",
+        ].join(" ")}
+      />
+    </button>
+  );
 }
 
 function Select({
