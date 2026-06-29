@@ -6,17 +6,24 @@ import { notFound } from "next/navigation";
 import { getTenant } from "@/lib/tenants/registry";
 import { VoiceWidget } from "../../components/VoiceWidget";
 
-// Build the admin-dashboard URL for this tenant from the current host:
-//   nestriq.lvh.me:3000               -> http://admin.lvh.me:3000/?tenant=nestriq
-//   nestriq.voice.gsoftconsulting.com -> https://admin.voice.gsoftconsulting.com/?tenant=nestriq
-//   localhost:3000                    -> http://admin.localhost:3000/?tenant=nestriq
-// In single-tenant deployments the admin lives on a separate domain — set
-// NEXT_PUBLIC_ADMIN_URL (e.g. https://admin.voice.gsoftconsulting.com) and it's used directly.
+// Build the admin-dashboard URL for this tenant from the current host.
+// Priority:
+//   1. NEXT_PUBLIC_ADMIN_URL — explicit override (e.g. a dedicated admin domain).
+//   2. SINGLE-TENANT deploy (NEXT_PUBLIC_ACTIVE_TENANT set) — same host, /admin path.
+//      Works everywhere incl. *.vercel.app where you can't create subdomains.
+//   3. WILDCARD deploy — the admin.<host> subdomain.
+//        nestriq.lvh.me:3000               -> http://admin.lvh.me:3000/?tenant=nestriq
+//        nestriq.voice.gsoftconsulting.com -> https://admin.voice.gsoftconsulting.com/?tenant=nestriq
 function adminUrl(host: string, slug: string): string {
   const override = process.env.NEXT_PUBLIC_ADMIN_URL;
   if (override) {
     return `${override.replace(/\/$/, "")}/?tenant=${slug}`;
   }
+  // Single-tenant: the admin lives at /admin on this same host.
+  if (process.env.NEXT_PUBLIC_ACTIVE_TENANT) {
+    return `/admin?tenant=${slug}`;
+  }
+  // Wildcard: swap the leading subdomain label for "admin".
   const [hostname, port] = host.split(":");
   const isLocal =
     hostname.endsWith("lvh.me") ||
@@ -25,8 +32,6 @@ function adminUrl(host: string, slug: string): string {
     hostname === "127.0.0.1";
   const protocol = isLocal ? "http" : "https";
   const parts = hostname.split(".");
-  // Replace the leading subdomain label with "admin"; if the host has no
-  // subdomain (e.g. "localhost"), prepend "admin." so it stays resolvable.
   if (parts.length > 1) {
     parts[0] = "admin";
   } else {

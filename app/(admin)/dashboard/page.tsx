@@ -4,7 +4,9 @@
 // UI filters by tenant. See docs/ARCHITECTURE.md.
 
 import { loadDashboardData } from "@/lib/admin/data";
+import { adminAuthConfigured, isAdminAuthed } from "@/lib/admin/auth";
 import DashboardClient from "./DashboardClient";
+import AdminLogin from "./AdminLogin";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,12 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ tenant?: string }>;
 }) {
+  // Password gate (active when ADMIN_PASSWORD is set). Render the login screen
+  // until a valid session cookie is present.
+  if (adminAuthConfigured() && !(await isAdminAuthed())) {
+    return <AdminLogin />;
+  }
+
   const data = await loadDashboardData();
   const { tenant } = await searchParams;
   // In a single-tenant deployment, lock the dashboard to that one agent so it's

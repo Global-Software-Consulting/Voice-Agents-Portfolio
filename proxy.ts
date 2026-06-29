@@ -41,12 +41,18 @@ export function proxy(req: NextRequest) {
   const suffix = url.pathname === "/" ? "" : url.pathname;
 
   // SINGLE-TENANT mode: this domain is one agent. Serve its demo, plus its OWN
-  // admin dashboard (scoped to this agent) at the admin.* subdomain. No hub, no
-  // other tenants. Works for any base domain (admin.localhost, admin.<agent>.com).
+  // admin dashboard (scoped to this agent). The admin is reachable two ways:
+  //   - admin.<domain>   (custom domains)
+  //   - <domain>/admin   (works anywhere, incl. *.vercel.app where you can't add subdomains)
+  // No hub, no other tenants.
   if (ACTIVE_TENANT) {
     const stHost = (req.headers.get("host") ?? "").split(":")[0];
     if (stHost.startsWith("admin.")) {
       url.pathname = `/dashboard${suffix}`;
+      return NextResponse.rewrite(url);
+    }
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      url.pathname = `/dashboard${url.pathname.slice("/admin".length)}`;
       return NextResponse.rewrite(url);
     }
     url.pathname = `/site/${ACTIVE_TENANT}${suffix}`;

@@ -489,7 +489,7 @@ function Navbar({
                   <MenuItem icon={<Icon.bell />} label="Notifications" />
                 </div>
                 <div className="border-t border-gray-100 p-1">
-                  <MenuItem icon={<Icon.logout />} label="Sign out" danger />
+                  <MenuItem icon={<Icon.logout />} label="Sign out" danger onClick={signOut} />
                 </div>
               </div>
             </>
@@ -504,13 +504,16 @@ function MenuItem({
   icon,
   label,
   danger,
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
   danger?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
+      onClick={onClick}
       className={[
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm",
         danger ? "text-rose-600 hover:bg-rose-50" : "text-gray-700 hover:bg-gray-50",
@@ -520,6 +523,14 @@ function MenuItem({
       {label}
     </button>
   );
+}
+
+async function signOut() {
+  try {
+    await fetch("/api/admin/logout", { method: "POST" });
+  } finally {
+    window.location.reload();
+  }
 }
 
 function Select({
