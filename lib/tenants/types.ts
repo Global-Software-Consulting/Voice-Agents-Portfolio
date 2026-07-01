@@ -27,9 +27,13 @@ export type Branding = {
   colors: { primary: string; accent: string; background: string };
   theme: "light" | "dark";
   tagline: string;
+  // Visual layout variant — each demo gets a structurally different landing page
+  // (nav placement, hero style, section order, footer) so no two look alike.
+  layout?: "classic" | "editorial" | "bold";
 };
 
 export type ServiceItem = { title: string; description: string; icon?: string };
+export type Benefit = { title: string; description: string };
 export type HowStep = { title: string; description: string };
 export type Stat = { value: string; label: string };
 export type Faq = { q: string; a: string };
@@ -45,6 +49,7 @@ export type LandingContent = {
   // Optional richer marketing content. Sections render only when provided, so
   // tenants can opt in gradually.
   subhero?: string; // supporting paragraph under the hero headline
+  benefits?: Benefit[]; // "why it matters" — business outcomes (3 is plenty)
   services?: ServiceItem[]; // "what we provide" cards
   steps?: HowStep[]; // "how it works" steps
   stats?: Stat[]; // headline numbers

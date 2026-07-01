@@ -13,9 +13,10 @@ export const lexora: TenantConfig = {
 
   branding: {
     logo: "/lexora-logo.svg",
-    colors: { primary: "#1e3a5f", accent: "#9a7b4f", background: "#f8fafc" },
+    colors: { primary: "#1e3a5f", accent: "#9a7b4f", background: "#f4f1ea" },
     theme: "light",
     tagline: "The first conversation every client deserves.",
+    layout: "editorial",
   },
 
   landing: {
@@ -30,6 +31,23 @@ export const lexora: TenantConfig = {
       "Consultation booking",
       "Emotion detection",
       "Sentiment analysis",
+    ],
+    benefits: [
+      {
+        title: "Never miss an intake",
+        description:
+          "Injured callers reach a real, empathetic conversation around the clock, so cases don't slip away to whichever firm answered first.",
+      },
+      {
+        title: "Attorneys focus on real cases",
+        description:
+          "Lexora gathers the facts and books the consultation — your attorneys only spend time on intakes worth pursuing.",
+      },
+      {
+        title: "Every caller handled with care",
+        description:
+          "Real-time emotion reading means distressed callers are met with the right tone, and flagged for priority follow-up.",
+      },
     ],
     stats: [
       { value: "24/7", label: "Always available" },

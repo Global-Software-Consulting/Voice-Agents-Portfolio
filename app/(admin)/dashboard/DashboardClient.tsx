@@ -63,7 +63,13 @@ const RANGES: { id: RangeId; label: string; days: number | null }[] = [
   { id: "all", label: "All time", days: null },
 ];
 
-const BRAND = "#0f766e";
+// Admin brand color follows the deployment's tenant — single-tenant deploys bake
+// NEXT_PUBLIC_ACTIVE_TENANT at build time, so each agent's dashboard (sidebar,
+// nav, charts, toggles) is colored to match its brand. Falls back to teal for the
+// multi-tenant hub.
+const BRAND = process.env.NEXT_PUBLIC_ACTIVE_TENANT
+  ? tenantColor(process.env.NEXT_PUBLIC_ACTIVE_TENANT)
+  : "#0f766e";
 const ADMIN_EMAIL = "admin@gmail.com";
 
 // Admin preferences, persisted per-device in localStorage. Loaded after mount

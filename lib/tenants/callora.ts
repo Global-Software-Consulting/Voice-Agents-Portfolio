@@ -12,9 +12,10 @@ export const callora: TenantConfig = {
 
   branding: {
     logo: "/callora-logo.svg",
-    colors: { primary: "#c2410c", accent: "#f97316", background: "#fff7ed" },
+    colors: { primary: "#2563eb", accent: "#3b82f6", background: "#eff6ff" },
     theme: "light",
     tagline: "Never miss another customer call.",
+    layout: "bold",
   },
 
   landing: {
@@ -29,6 +30,23 @@ export const callora: TenantConfig = {
       "Appointment booking",
       "Lead capture",
       "Call summary",
+    ],
+    benefits: [
+      {
+        title: "Turn missed calls into booked jobs",
+        description:
+          "Every call is answered and, when it fits, booked straight into your schedule — even when your crew is up on a roof.",
+      },
+      {
+        title: "No more after-hours voicemail",
+        description:
+          "Callora answers around the clock, so evening and weekend callers become customers instead of lost leads.",
+      },
+      {
+        title: "Your team stays on the tools",
+        description:
+          "Routine questions, service-area checks, and scheduling are handled automatically, so your crew keeps working.",
+      },
     ],
     stats: [
       { value: "24/7", label: "Calls answered" },

@@ -14,6 +14,7 @@ export const nestriq: TenantConfig = {
     colors: { primary: "#0f766e", accent: "#14b8a6", background: "#f0fdfa" },
     theme: "light",
     tagline: "AI-powered property acquisition specialist.",
+    layout: "classic",
   },
 
   landing: {
@@ -28,6 +29,23 @@ export const nestriq: TenantConfig = {
       "Motivation scoring",
       "Appointment booking",
       "Lead capture",
+    ],
+    benefits: [
+      {
+        title: "Only talk to ready-to-sell leads",
+        description:
+          "Nestriq qualifies each seller and scores their motivation, so your acquisition team spends time only on the ones worth calling.",
+      },
+      {
+        title: "Capture every seller, day or night",
+        description:
+          "After-hours and weekend callers get a real conversation instead of voicemail — no motivated seller ever slips away.",
+      },
+      {
+        title: "The full picture before you call",
+        description:
+          "Every conversation lands in your dashboard with the property details, timeline, and a motivation score, ready for follow-up.",
+      },
     ],
     stats: [
       { value: "24/7", label: "Always answering" },
