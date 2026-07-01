@@ -35,6 +35,9 @@ function summaryFrom(v: unknown): string | null {
   return null;
 }
 
+// Caller identity resolved for a call (from the call row + its function calls).
+type CallerInfo = { name?: string; phone?: string; email?: string };
+
 type SectionId =
   | "overview"
   | "calls"
@@ -63,13 +66,14 @@ const RANGES: { id: RangeId; label: string; days: number | null }[] = [
   { id: "all", label: "All time", days: null },
 ];
 
-// Admin brand color follows the deployment's tenant — single-tenant deploys bake
+// Admin brand follows the deployment's tenant — single-tenant deploys bake
 // NEXT_PUBLIC_ACTIVE_TENANT at build time, so each agent's dashboard (sidebar,
-// nav, charts, toggles) is colored to match its brand. Falls back to teal for the
-// multi-tenant hub.
-const BRAND = process.env.NEXT_PUBLIC_ACTIVE_TENANT
-  ? tenantColor(process.env.NEXT_PUBLIC_ACTIVE_TENANT)
-  : "#0f766e";
+// nav, charts, toggles) is colored + named to match its brand. Falls back to the
+// neutral "GSoft Voice" identity for the multi-tenant hub.
+const ACTIVE_TENANT = process.env.NEXT_PUBLIC_ACTIVE_TENANT?.trim();
+const BRAND = ACTIVE_TENANT ? tenantColor(ACTIVE_TENANT) : "#0f766e";
+const BRAND_NAME = ACTIVE_TENANT ? tenantMeta(ACTIVE_TENANT).name : "GSoft Voice";
+const BRAND_INITIAL = (ACTIVE_TENANT ? tenantMeta(ACTIVE_TENANT).name : "GSoft").charAt(0);
 const ADMIN_EMAIL = "admin@gmail.com";
 
 // Admin preferences, persisted per-device in localStorage. Loaded after mount
@@ -203,6 +207,38 @@ export default function DashboardClient({
     return { resolve };
   }, [data]);
 
+  // Cross-links used to give every section real context: which person an
+  // appointment is for, who the caller on a call/transcript was, etc. Caller
+  // info comes from the call row's caller_name, enriched by any name/phone/email
+  // captured in a function call (createLead / createCaseIntake / …) on that call.
+  const enrich = useMemo(() => {
+    const leadById = new Map<string, Lead>();
+    for (const l of data.leads) leadById.set(l.id, l);
+
+    const callById = new Map<string, Call>();
+    for (const c of data.calls) callById.set(c.id, c);
+
+    const callerByCall = new Map<string, CallerInfo>();
+    for (const c of data.calls) {
+      if (c.caller_name) callerByCall.set(c.id, { name: c.caller_name });
+    }
+    for (const fc of data.functionCalls) {
+      if (!fc.call_id || !fc.arguments || typeof fc.arguments !== "object") continue;
+      const rec = fc.arguments as Record<string, unknown>;
+      const name = typeof rec.name === "string" ? rec.name : undefined;
+      const phone = typeof rec.phone === "string" ? rec.phone : undefined;
+      const email = typeof rec.email === "string" ? rec.email : undefined;
+      if (!name && !phone && !email) continue;
+      const ex = callerByCall.get(fc.call_id) ?? {};
+      callerByCall.set(fc.call_id, {
+        name: ex.name ?? name,
+        phone: ex.phone ?? phone,
+        email: ex.email ?? email,
+      });
+    }
+    return { leadById, callById, callerByCall };
+  }, [data]);
+
   const resolved = selectedLead ? lookup.resolve(selectedLead) : null;
 
   const days = RANGES.find((r) => r.id === range)!.days;
@@ -260,7 +296,10 @@ export default function DashboardClient({
   const title = nav.find((n) => n.id === effectiveSection)?.label ?? "Overview";
 
   return (
-    <div className="flex min-h-screen bg-gray-50 text-gray-900">
+    <div
+      className="flex min-h-screen bg-gray-50 text-gray-900"
+      style={{ ["--brand" as string]: BRAND } as React.CSSProperties}
+    >
       {/* ---- Sidebar ---- */}
       <Sidebar
         nav={nav}
@@ -310,7 +349,9 @@ export default function DashboardClient({
               }}
             />
           )}
-          {effectiveSection === "calls" && <CallsView rows={f.calls} query={query} />}
+          {effectiveSection === "calls" && (
+            <CallsView rows={f.calls} query={query} callerByCall={enrich.callerByCall} />
+          )}
           {effectiveSection === "leads" && (
             <LeadsView
               rows={f.leads}
@@ -320,19 +361,34 @@ export default function DashboardClient({
             />
           )}
           {effectiveSection === "appointments" && (
-            <AppointmentsView rows={f.appointments} query={query} />
+            <AppointmentsView
+              rows={f.appointments}
+              query={query}
+              leadById={enrich.leadById}
+              lex={lexicon}
+            />
           )}
           {effectiveSection === "transcripts" && (
-            <TranscriptsView rows={f.transcripts} query={query} />
+            <TranscriptsView
+              rows={f.transcripts}
+              query={query}
+              callById={enrich.callById}
+              callerByCall={enrich.callerByCall}
+            />
           )}
           {effectiveSection === "emotion" && (
-            <EmotionView rows={f.agentEvents} query={query} />
+            <EmotionView
+              rows={f.agentEvents}
+              query={query}
+              callerByCall={enrich.callerByCall}
+              callById={enrich.callById}
+            />
           )}
           {effectiveSection === "activity" && (
-            <ActivityView rows={f.agentEvents} query={query} />
+            <ActivityView rows={f.agentEvents} query={query} callerByCall={enrich.callerByCall} />
           )}
           {effectiveSection === "functions" && (
-            <FunctionsView rows={f.functionCalls} query={query} />
+            <FunctionsView rows={f.functionCalls} query={query} callerByCall={enrich.callerByCall} />
           )}
         </main>
       </div>
@@ -403,11 +459,11 @@ function Sidebar({
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
             style={{ background: BRAND }}
           >
-            G
+            {BRAND_INITIAL}
           </span>
           {!collapsed && (
             <div className="leading-tight">
-              <div className="text-sm font-semibold">GSoft Voice</div>
+              <div className="text-sm font-semibold">{BRAND_NAME}</div>
               <div className="text-[11px] text-gray-400">Admin Console</div>
             </div>
           )}
@@ -422,11 +478,10 @@ function Sidebar({
                 key={item.id}
                 onClick={() => setSection(item.id)}
                 title={collapsed ? item.label : undefined}
+                style={active ? { background: `${BRAND}14`, color: BRAND } : undefined}
                 className={[
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
-                  active
-                    ? "bg-teal-50 text-teal-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                  active ? "" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
                   collapsed ? "lg:justify-center" : "",
                 ].join(" ")}
               >
@@ -521,7 +576,7 @@ function Navbar({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search…"
-              className="w-40 rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-teal-400 focus:bg-white md:w-56"
+              className="w-40 rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-[var(--brand)] focus:bg-white md:w-56"
             />
           </label>
         )}
@@ -816,7 +871,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 outline-none hover:border-gray-300 focus:border-teal-400"
+        className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 outline-none hover:border-gray-300 focus:border-[var(--brand)]"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -965,7 +1020,7 @@ function Kpi({
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 active:translate-y-0"
+      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] active:translate-y-0"
     >
       <div className="flex items-center justify-between">
         <span className="text-sm text-gray-500">{label}</span>
@@ -986,8 +1041,21 @@ function Kpi({
 
 /* ============================== Section views ============================== */
 
-function CallsView({ rows, query }: { rows: DashboardData["calls"]; query: string }) {
-  const filtered = search(rows, query, (c) => [c.tenant, c.caller_name, c.status]);
+function CallsView({
+  rows,
+  query,
+  callerByCall,
+}: {
+  rows: DashboardData["calls"];
+  query: string;
+  callerByCall: Map<string, CallerInfo>;
+}) {
+  const nameOf = (c: Call) => c.caller_name ?? callerByCall.get(c.id)?.name ?? null;
+  const contactOf = (c: Call) => {
+    const ci = callerByCall.get(c.id);
+    return ci?.phone ?? ci?.email ?? null;
+  };
+  const filtered = search(rows, query, (c) => [c.tenant, nameOf(c), contactOf(c), c.status]);
   return (
     <Card title="Calls" subtitle={`${filtered.length} records`}>
       <DataTable
@@ -995,7 +1063,7 @@ function CallsView({ rows, query }: { rows: DashboardData["calls"]; query: strin
         empty="No calls match the current filters."
         columns={[
           { label: "Demo", cell: (c) => <TenantBadge slug={c.tenant} /> },
-          { label: "Caller", cell: (c) => c.caller_name ?? "—" },
+          { label: "Caller", cell: (c) => <CallerCell name={nameOf(c)} contact={contactOf(c)} /> },
           { label: "Status", cell: (c) => <StatusBadge status={c.status} /> },
           { label: "Duration", cell: (c) => fmtDuration(c.duration ?? 0) },
           { label: "Started", cell: (c) => fmtDate(c.started_at), className: "text-gray-500" },
@@ -1030,7 +1098,7 @@ function LeadsView({
     {
       label: "",
       cell: () => (
-        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-teal-600">
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-[var(--brand)]">
           <Icon.message width={14} height={14} /> Transcript
         </span>
       ),
@@ -1053,15 +1121,6 @@ function LeadsView({
 
 /* ----------------------- Emotional Analysis (Lexora) ---------------------- */
 
-type EmotionRow = {
-  id: string;
-  tenant: string;
-  dominant: string;
-  sentiment: string;
-  intensity: number | null;
-  created_at: string;
-};
-
 function sentimentColor(sentiment: string): string {
   if (sentiment === "negative") return "#dc2626";
   if (sentiment === "positive") return "#16a34a";
@@ -1080,19 +1139,93 @@ function SentimentPill({ sentiment }: { sentiment: string }) {
   );
 }
 
+// Combined emotion+intensity priority (0–100): red = urgent, amber = watch,
+// grey = low. Shown with a small bar so it's scannable at a glance.
+function PriorityBadge({ score }: { score: number }) {
+  const tone =
+    score >= 70
+      ? { bg: "#fee2e2", fg: "#b91c1c" }
+      : score >= 40
+        ? { bg: "#fef3c7", fg: "#b45309" }
+        : { bg: "#f1f5f9", fg: "#475569" };
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        className="inline-block rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
+        style={{ background: tone.bg, color: tone.fg }}
+      >
+        {score}
+      </span>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-gray-100">
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: tone.fg }}
+        />
+      </span>
+    </span>
+  );
+}
+
+// One aggregated emotion summary per call. `priority` combines the emotion
+// (sentiment) with the intensity score into a single 0–100 triage rank.
+type CallEmotion = {
+  id: string;
+  callId: string | null;
+  tenant: string;
+  caller: string | null;
+  dominant: string;
+  sentiment: string;
+  peak: number | null;
+  priority: number;
+  readings: number;
+  when: string;
+};
+
+// The map key carrying the greatest total weight (intensity-weighted vote).
+function topByWeight(m: Map<string, number>): string {
+  let best = "—";
+  let bestWeight = -Infinity;
+  for (const [k, w] of m) {
+    if (w > bestWeight) {
+      bestWeight = w;
+      best = k;
+    }
+  }
+  return best;
+}
+
 function EmotionView({
   rows,
   query,
+  callerByCall,
+  callById,
 }: {
   rows: DashboardData["agentEvents"];
   query: string;
+  callerByCall: Map<string, CallerInfo>;
+  callById: Map<string, Call>;
 }) {
-  const parsed: EmotionRow[] = rows
+  // Hume samples emotion throughout a call, logging a reading each time the
+  // dominant emotion changes — so one call yields many rows. Aggregate them PER
+  // CALL: one row per call, showing the dominant emotion + sentiment across the
+  // call, its peak intensity, how many readings it came from, and the caller —
+  // instead of a stream of anonymous readings.
+  type Reading = {
+    callKey: string;
+    callId: string | null;
+    tenant: string;
+    dominant: string;
+    sentiment: string;
+    intensity: number | null;
+    created_at: string;
+  };
+  const readings: Reading[] = rows
     .filter((e) => e.event_type === "emotion_analysis")
     .map((e) => {
       const p = (e.payload ?? {}) as Record<string, unknown>;
       return {
-        id: e.id,
+        callKey: e.call_id ?? e.id,
+        callId: e.call_id,
         tenant: e.tenant,
         dominant: typeof p.dominant === "string" ? p.dominant : "—",
         sentiment: typeof p.sentiment === "string" ? p.sentiment : "neutral",
@@ -1101,8 +1234,71 @@ function EmotionView({
       };
     });
 
-  const filtered = search(parsed, query, (r) => [r.tenant, r.dominant, r.sentiment]);
-  const counts = countBy(parsed, (r) => r.sentiment);
+  const groups = new Map<string, Reading[]>();
+  for (const r of readings) {
+    const arr = groups.get(r.callKey);
+    if (arr) arr.push(r);
+    else groups.set(r.callKey, [r]);
+  }
+
+  const calls: CallEmotion[] = [...groups.values()]
+    .map((rs) => {
+      const callId = rs[0].callId;
+      const caller = callId
+        ? callerByCall.get(callId)?.name ?? callById.get(callId)?.caller_name ?? null
+        : null;
+      const when =
+        (callId && callById.get(callId)?.started_at) ??
+        rs.reduce((a, b) => (a > b.created_at ? a : b.created_at), rs[0].created_at);
+      // Aggregate across ALL readings in the call (intensity-weighted) so the
+      // result is robust to how many rows a call produced.
+      const wOf = (r: Reading) => r.intensity ?? 0.5; // weight; unknown → mid
+
+      // Dominant emotion = the emotion carrying the most TOTAL intensity across
+      // the call — strong + recurring emotions win; a single weak reading can't
+      // define the call, and a single strong spike can't fully hijack it either.
+      const byEmotion = new Map<string, number>();
+      for (const r of rs) byEmotion.set(r.dominant, (byEmotion.get(r.dominant) ?? 0) + wOf(r));
+      const dominant = topByWeight(byEmotion);
+
+      // Overall sentiment = sign of the intensity-weighted mean valence.
+      const sign = (s: string) => (s === "negative" ? -1 : s === "positive" ? 1 : 0);
+      const meanValence = rs.reduce((a, r) => a + sign(r.sentiment) * wOf(r), 0) / rs.length;
+      const sentiment = meanValence < -0.12 ? "negative" : meanValence > 0.12 ? "positive" : "neutral";
+
+      // Strongest single moment (any emotion), kept as a reference signal.
+      const peak = rs.reduce<number | null>(
+        (m, r) => (r.intensity == null ? m : m == null ? r.intensity : Math.max(m, r.intensity)),
+        null,
+      );
+
+      // Priority (0–100) blends the WORST distress moment (peak, 60%) with how
+      // SUSTAINED the distress was (mean, 40%). Distress = intensity while
+      // negative. This surfaces a brief severe spike yet isn't thrown off by one
+      // fluke reading, and stays ~0 for a calm/positive call.
+      const distress = rs.map((r) => (r.sentiment === "negative" ? wOf(r) : 0));
+      const peakD = distress.length ? Math.max(...distress) : 0;
+      const avgD = distress.length ? distress.reduce((a, b) => a + b, 0) / distress.length : 0;
+      const priority = Math.round(100 * (0.6 * peakD + 0.4 * avgD));
+
+      return {
+        id: rs[0].callKey,
+        callId,
+        tenant: rs[0].tenant,
+        caller,
+        dominant,
+        sentiment,
+        peak,
+        priority,
+        readings: rs.length,
+        when,
+      };
+    })
+    // Latest call first. The Priority column still flags urgency at a glance.
+    .sort((a, b) => (a.when < b.when ? 1 : a.when > b.when ? -1 : 0));
+
+  const filtered = search(calls, query, (c) => [c.tenant, c.caller, c.dominant, c.sentiment]);
+  const counts = countBy(calls, (c) => c.sentiment);
 
   return (
     <div className="space-y-6">
@@ -1110,7 +1306,7 @@ function EmotionView({
         {(["negative", "neutral", "positive"] as const).map((s) => (
           <div key={s} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-sm capitalize text-gray-500">{s}</span>
+              <span className="text-sm capitalize text-gray-500">{s} calls</span>
               <span
                 className="h-2.5 w-2.5 rounded-full"
                 style={{ background: sentimentColor(s) }}
@@ -1121,18 +1317,22 @@ function EmotionView({
         ))}
       </div>
 
-      <Card title="Emotional Analysis" subtitle={`${filtered.length} readings · from Hume voice analysis`}>
+      <Card
+        title="Emotional Analysis"
+        subtitle={`${filtered.length} calls · one row per call, intensity-weighted across all readings`}
+      >
         <DataTable
           rows={filtered}
           empty="No emotional analysis recorded yet."
           columns={[
-            { label: "Demo", cell: (r) => <TenantBadge slug={r.tenant} /> },
-            { label: "Dominant emotion", cell: (r) => <span className="font-medium">{r.dominant}</span> },
-            { label: "Sentiment", cell: (r) => <SentimentPill sentiment={r.sentiment} /> },
+            { label: "Demo", cell: (c) => <TenantBadge slug={c.tenant} /> },
+            { label: "Caller", cell: (c) => <CallerCell name={c.caller} contact={null} /> },
+            { label: "Dominant emotion", cell: (c) => <span className="font-medium">{c.dominant}</span> },
+            { label: "Sentiment", cell: (c) => <SentimentPill sentiment={c.sentiment} /> },
             {
-              label: "Intensity",
-              cell: (r) =>
-                r.intensity == null ? (
+              label: "Peak intensity",
+              cell: (c) =>
+                c.peak == null ? (
                   "—"
                 ) : (
                   <div className="flex items-center gap-2">
@@ -1140,18 +1340,25 @@ function EmotionView({
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${Math.max(0, Math.min(100, r.intensity * 100))}%`,
-                          background: sentimentColor(r.sentiment),
+                          width: `${Math.max(0, Math.min(100, c.peak * 100))}%`,
+                          background: sentimentColor(c.sentiment),
                         }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {Math.round(r.intensity * 100)}%
-                    </span>
+                    <span className="text-xs text-gray-500">{Math.round(c.peak * 100)}%</span>
                   </div>
                 ),
             },
-            { label: "Time", cell: (r) => fmtDate(r.created_at), className: "text-gray-500" },
+            { label: "Priority", cell: (c) => <PriorityBadge score={c.priority} /> },
+            {
+              label: "Readings",
+              cell: (c) => (
+                <span className="text-gray-500" title={`${c.readings} emotion readings in this call`}>
+                  {c.readings}
+                </span>
+              ),
+            },
+            { label: "Time", cell: (c) => fmtDate(c.when), className: "text-gray-500" },
           ]}
         />
       </Card>
@@ -1159,14 +1366,26 @@ function EmotionView({
   );
 }
 
+
 function AppointmentsView({
   rows,
   query,
+  leadById,
+  lex,
 }: {
   rows: DashboardData["appointments"];
   query: string;
+  leadById: Map<string, Lead>;
+  lex: Lexicon;
 }) {
-  const filtered = search(rows, query, (a) => [a.tenant, a.date, a.time, a.status]);
+  const leadOf = (a: DashboardData["appointments"][number]) =>
+    a.lead_id ? leadById.get(a.lead_id) ?? null : null;
+  const nameOf = (a: DashboardData["appointments"][number]) => leadOf(a)?.name ?? null;
+  const contactOf = (a: DashboardData["appointments"][number]) => {
+    const l = leadOf(a);
+    return l?.phone ?? l?.email ?? null;
+  };
+  const filtered = search(rows, query, (a) => [a.tenant, nameOf(a), contactOf(a), a.date, a.time, a.status]);
   return (
     <Card title="Appointments" subtitle={`${filtered.length} records`}>
       <DataTable
@@ -1174,6 +1393,7 @@ function AppointmentsView({
         empty="No appointments match the current filters."
         columns={[
           { label: "Demo", cell: (a) => <TenantBadge slug={a.tenant} /> },
+          { label: lex.lead, cell: (a) => <CallerCell name={nameOf(a)} contact={contactOf(a)} /> },
           { label: "Date", cell: (a) => a.date ?? "—" },
           { label: "Time", cell: (a) => a.time ?? "—" },
           { label: "Status", cell: (a) => <StatusBadge status={a.status} /> },
@@ -1187,11 +1407,17 @@ function AppointmentsView({
 function TranscriptsView({
   rows,
   query,
+  callById,
+  callerByCall,
 }: {
   rows: DashboardData["transcripts"];
   query: string;
+  callById: Map<string, Call>;
+  callerByCall: Map<string, CallerInfo>;
 }) {
-  const filtered = search(rows, query, (t) => [t.tenant, t.summary, t.transcript]);
+  const callerName = (callId: string | null) =>
+    (callId && (callerByCall.get(callId)?.name ?? callById.get(callId)?.caller_name)) || null;
+  const filtered = search(rows, query, (t) => [t.tenant, t.summary, t.transcript, callerName(t.call_id)]);
   if (filtered.length === 0)
     return (
       <Card title="Transcripts" subtitle="0 records">
@@ -1200,18 +1426,31 @@ function TranscriptsView({
     );
   return (
     <div className="space-y-4">
-      {filtered.map((t) => (
-        <div key={t.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <TenantBadge slug={t.tenant} />
-            <span className="text-xs text-gray-400">{fmtDate(t.created_at)}</span>
+      {filtered.map((t) => {
+        const call = t.call_id ? callById.get(t.call_id) ?? null : null;
+        const name = callerName(t.call_id);
+        return (
+          <div key={t.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <TenantBadge slug={t.tenant} />
+              <span className="text-sm font-medium text-gray-800">{name ?? "Unknown caller"}</span>
+              {call?.duration ? (
+                <span className="text-xs text-gray-400">· {fmtDuration(call.duration)}</span>
+              ) : null}
+              <span className="text-xs text-gray-400">· {fmtDate(call?.started_at ?? t.created_at)}</span>
+              {t.call_id && (
+                <span className="ml-auto rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                  call {t.call_id.slice(0, 8)}
+                </span>
+              )}
+            </div>
+            {t.summary && <p className="mt-3 text-sm font-medium text-gray-800">{t.summary}</p>}
+            <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+              {t.transcript || "(empty transcript)"}
+            </pre>
           </div>
-          {t.summary && <p className="mt-3 text-sm font-medium text-gray-800">{t.summary}</p>}
-          <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-            {t.transcript || "(empty transcript)"}
-          </pre>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1219,11 +1458,14 @@ function TranscriptsView({
 function ActivityView({
   rows,
   query,
+  callerByCall,
 }: {
   rows: DashboardData["agentEvents"];
   query: string;
+  callerByCall: Map<string, CallerInfo>;
 }) {
-  const filtered = search(rows, query, (e) => [e.tenant, e.event_type]);
+  const nameOf = (callId: string | null) => (callId && callerByCall.get(callId)?.name) || null;
+  const filtered = search(rows, query, (e) => [e.tenant, e.event_type, nameOf(e.call_id)]);
   return (
     <Card title="Agent Activity" subtitle={`${filtered.length} events`}>
       <DataTable
@@ -1231,13 +1473,12 @@ function ActivityView({
         empty="No agent events match the current filters."
         columns={[
           { label: "Demo", cell: (e) => <TenantBadge slug={e.tenant} /> },
+          { label: "Caller", cell: (e) => <CallerCell name={nameOf(e.call_id)} contact={null} /> },
           {
             label: "Event",
-            cell: (e) => (
-              <span className="font-mono text-xs text-gray-700">{e.event_type ?? "—"}</span>
-            ),
+            cell: (e) => <EventBadge event={e.event_type} />,
           },
-          { label: "Payload", cell: (e) => <Json value={e.payload} /> },
+          { label: "Details", cell: (e) => <HoverJson value={e.payload} /> },
           { label: "Time", cell: (e) => fmtDate(e.created_at), className: "text-gray-500" },
         ]}
       />
@@ -1248,11 +1489,14 @@ function ActivityView({
 function FunctionsView({
   rows,
   query,
+  callerByCall,
 }: {
   rows: DashboardData["functionCalls"];
   query: string;
+  callerByCall: Map<string, CallerInfo>;
 }) {
-  const filtered = search(rows, query, (fc) => [fc.tenant, fc.name]);
+  const nameOf = (callId: string | null) => (callId && callerByCall.get(callId)?.name) || null;
+  const filtered = search(rows, query, (fc) => [fc.tenant, fc.name, nameOf(fc.call_id)]);
   return (
     <Card title="Function Call Logs" subtitle={`${filtered.length} calls`}>
       <DataTable
@@ -1260,6 +1504,7 @@ function FunctionsView({
         empty="No function calls match the current filters."
         columns={[
           { label: "Demo", cell: (fc) => <TenantBadge slug={fc.tenant} /> },
+          { label: "Caller", cell: (fc) => <CallerCell name={nameOf(fc.call_id)} contact={null} /> },
           {
             label: "Function",
             cell: (fc) => (
@@ -1268,8 +1513,8 @@ function FunctionsView({
               </span>
             ),
           },
-          { label: "Arguments", cell: (fc) => <Json value={fc.arguments} /> },
-          { label: "Result", cell: (fc) => <Json value={fc.result} /> },
+          { label: "Arguments", cell: (fc) => <HoverJson value={fc.arguments} /> },
+          { label: "Result", cell: (fc) => <HoverJson value={fc.result} /> },
           { label: "Time", cell: (fc) => fmtDate(fc.created_at), className: "text-gray-500" },
         ]}
       />
@@ -1318,8 +1563,10 @@ function DataTable<T extends { id: string }>({
 }) {
   if (rows.length === 0) return <EmptyState text={empty} />;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+    // Edge-to-edge horizontal scroll on small screens (the -mx-5/px-5 spans the
+    // Card's padding) with a min-width so columns scroll instead of squishing.
+    <div className="-mx-5 overflow-x-auto px-5">
+      <table className="w-full min-w-[680px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-400">
             {columns.map((c, i) => (
@@ -1336,7 +1583,7 @@ function DataTable<T extends { id: string }>({
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={[
                 "border-b border-gray-100 last:border-0",
-                onRowClick ? "cursor-pointer hover:bg-teal-50/50" : "hover:bg-gray-50/60",
+                onRowClick ? "cursor-pointer hover:bg-gray-100" : "hover:bg-gray-50/60",
               ].join(" ")}
             >
               {columns.map((c, i) => (
@@ -1372,6 +1619,29 @@ function TenantBadge({ slug }: { slug: string }) {
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />
       <span className="font-medium text-gray-800">{m.name}</span>
+    </span>
+  );
+}
+
+// Person cell: a name over a secondary contact line. Falls back to a muted
+// "Unknown" so empty rows read clearly instead of a bare dash.
+function CallerCell({ name, contact }: { name: string | null; contact: string | null }) {
+  if (!name && !contact) return <span className="text-gray-400">Unknown</span>;
+  return (
+    <div className="min-w-0 leading-tight">
+      <div className="font-medium text-gray-800">{name ?? "Unknown"}</div>
+      {contact && <div className="truncate text-xs text-gray-500">{contact}</div>}
+    </div>
+  );
+}
+
+// Humanize an agent event_type ("human_handoff" → "Human handoff") as a pill.
+function EventBadge({ event }: { event: string | null }) {
+  if (!event) return <span className="text-gray-400">—</span>;
+  const label = event.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  return (
+    <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+      {label}
     </span>
   );
 }
@@ -1414,15 +1684,23 @@ function ScoreBadge({ score }: { score: number | null }) {
   );
 }
 
-function Json({ value }: { value: unknown }) {
+// JSON cell that shows a one-line preview in the table and reveals the full,
+// pretty-printed value in a floating tooltip on hover — so long arguments /
+// results / payloads are never truncated away, without expanding the row.
+function HoverJson({ value }: { value: unknown }) {
   if (value == null) return <span className="text-gray-400">—</span>;
-  const str = typeof value === "string" ? value : JSON.stringify(value);
+  const oneLine = typeof value === "string" ? value : JSON.stringify(value);
+  const pretty = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
-    <span
-      className="block max-w-[260px] truncate font-mono text-xs text-gray-500"
-      title={str}
-    >
-      {str}
+    <span className="group/json relative inline-block max-w-[150px] align-top sm:max-w-[210px] lg:max-w-[260px]">
+      <span className="block truncate font-mono text-xs text-gray-500" title={pretty}>
+        {oneLine}
+      </span>
+      <span className="pointer-events-none absolute right-0 top-full z-30 mt-1 hidden group-hover/json:block">
+        <pre className="max-h-80 w-max min-w-[220px] max-w-[min(80vw,460px)] overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-white p-2.5 font-mono text-xs leading-relaxed text-gray-700 shadow-xl">
+          {pretty}
+        </pre>
+      </span>
     </span>
   );
 }

@@ -38,13 +38,13 @@ export type TenantMeta = {
 const lex = (l: Partial<Lexicon>): Lexicon => ({ ...GENERIC_LEXICON, ...l });
 
 export const TENANT_META: TenantMeta[] = [
-  { slug: "nestriq", name: "Nestriq AI", platform: "ElevenLabs", industry: "Real Estate", color: "#14b8a6",
+  { slug: "nestriq", name: "Nestriq AI", platform: "ElevenLabs", industry: "Real Estate", color: "#0f766e",
     lexicon: lex({ scoreLabel: "Motivation" }) },
-  { slug: "callora", name: "Callora AI", platform: "Vapi", industry: "Home Services", color: "#f97316",
+  { slug: "callora", name: "Callora AI", platform: "Vapi", industry: "Home Services", color: "#2563eb",
     lexicon: lex({}) },
   { slug: "medelynx", name: "Medelynx AI", platform: "Retell AI", industry: "Healthcare", color: "#3b82f6",
     lexicon: lex({ lead: "Patient", leads: "Patients", showScore: false }) },
-  { slug: "lexora", name: "Lexora AI", platform: "Hume AI", industry: "Personal Injury Law", color: "#8b5cf6",
+  { slug: "lexora", name: "Lexora AI", platform: "Hume AI", industry: "Personal Injury Law", color: "#1e3a5f",
     lexicon: lex({ lead: "Case", leads: "Cases", scoreLabel: "Sentiment", showScore: false, emotion: true }) },
   { slug: "qualivo", name: "Qualivo AI", platform: "Ultravox", industry: "B2B SaaS / Sales", color: "#ec4899",
     lexicon: lex({ scoreLabel: "Lead Score" }) },
