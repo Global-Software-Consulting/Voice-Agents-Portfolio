@@ -57,8 +57,8 @@ export function LineChart({
         </linearGradient>
       </defs>
 
-      {gridVals.map((v) => (
-        <g key={v}>
+      {gridVals.map((v, i) => (
+        <g key={i}>
           <line
             x1={pad.left}
             x2={pad.left + iw}
@@ -130,8 +130,8 @@ export function BarChart({
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img">
-      {gridVals.map((v) => (
-        <g key={v}>
+      {gridVals.map((v, i) => (
+        <g key={i}>
           <line x1={pad.left} x2={pad.left + iw} y1={y(v)} y2={y(v)} stroke="#e5e7eb" />
           <text x={pad.left - 6} y={y(v) + 3} textAnchor="end" className="fill-gray-400 text-[10px]">
             {fmt(v)}

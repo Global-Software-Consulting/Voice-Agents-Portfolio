@@ -26,6 +26,15 @@ function leadIdFrom(v: unknown): string | null {
   return null;
 }
 
+// Pull a `summary` string out of an event payload / function-call arguments.
+function summaryFrom(v: unknown): string | null {
+  if (v && typeof v === "object" && "summary" in v) {
+    const s = (v as { summary: unknown }).summary;
+    return typeof s === "string" && s.trim() ? s : null;
+  }
+  return null;
+}
+
 type SectionId =
   | "overview"
   | "calls"
@@ -151,7 +160,23 @@ export default function DashboardClient({
       if (id && !leadToCall.has(id)) leadToCall.set(id, fc.call_id);
     }
 
-    const resolve = (lead: Lead): { call: Call | null; transcript: Transcript | null } => {
+    // A call's summary can come from three places: the transcript row (post-call
+    // webhook), a `call_summary` agent event, or a `saveCallSummary` function call.
+    const summaryByCall = new Map<string, string>();
+    const setSummary = (callId: string | null, s: string | null) => {
+      if (callId && s && !summaryByCall.has(callId)) summaryByCall.set(callId, s);
+    };
+    for (const t of data.transcripts) setSummary(t.call_id, t.summary);
+    for (const e of data.agentEvents) {
+      if (e.event_type === "call_summary") setSummary(e.call_id, summaryFrom(e.payload));
+    }
+    for (const fc of data.functionCalls) {
+      if (fc.name === "saveCallSummary") setSummary(fc.call_id, summaryFrom(fc.arguments));
+    }
+
+    const resolve = (
+      lead: Lead,
+    ): { call: Call | null; transcript: Transcript | null; summary: string | null } => {
       let callId = leadToCall.get(lead.id) ?? null;
       if (!callId && lead.name) {
         const nameLc = lead.name.trim().toLowerCase();
@@ -165,7 +190,8 @@ export default function DashboardClient({
       }
       const call = callId ? callById.get(callId) ?? null : null;
       const transcript = callId ? transcriptByCall.get(callId) ?? null : null;
-      return { call, transcript };
+      const summary = callId ? summaryByCall.get(callId) ?? null : null;
+      return { call, transcript, summary };
     };
 
     return { resolve };
@@ -268,7 +294,16 @@ export default function DashboardClient({
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           {!data.connected && <DisconnectedBanner error={data.error} />}
 
-          {effectiveSection === "overview" && <Overview f={f} lex={lexicon} />}
+          {effectiveSection === "overview" && (
+            <Overview
+              f={f}
+              lex={lexicon}
+              onNavigate={(s) => {
+                setSection(s);
+                setQuery("");
+              }}
+            />
+          )}
           {effectiveSection === "calls" && <CallsView rows={f.calls} query={query} />}
           {effectiveSection === "leads" && (
             <LeadsView
@@ -301,6 +336,7 @@ export default function DashboardClient({
           lead={selectedLead}
           call={resolved?.call ?? null}
           transcript={resolved?.transcript ?? null}
+          summary={resolved?.summary ?? null}
           onClose={() => setSelectedLead(null)}
         />
       )}
@@ -789,7 +825,15 @@ function Select({
 
 /* ============================== Overview ============================== */
 
-function Overview({ f, lex }: { f: Filtered; lex: Lexicon }) {
+function Overview({
+  f,
+  lex,
+  onNavigate,
+}: {
+  f: Filtered;
+  lex: Lexicon;
+  onNavigate: (s: SectionId) => void;
+}) {
   const totalCalls = f.calls.length;
   const totalLeads = f.leads.length;
   const booked = f.appointments.length;
@@ -834,15 +878,34 @@ function Overview({ f, lex }: { f: Filtered; lex: Lexicon }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi label="Total Calls" value={totalCalls} icon={<Icon.phone />} tint="#0f766e" />
-        <Kpi label={`Total ${lex.leads}`} value={totalLeads} icon={<Icon.users />} tint="#2563eb" />
-        <Kpi label="Appointments" value={booked} icon={<Icon.calendar />} tint="#7c3aed" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi
+          label="Total Calls"
+          value={totalCalls}
+          icon={<Icon.phone />}
+          tint="#0f766e"
+          onClick={() => onNavigate("calls")}
+        />
+        <Kpi
+          label={`Total ${lex.leads}`}
+          value={totalLeads}
+          icon={<Icon.users />}
+          tint="#2563eb"
+          onClick={() => onNavigate("leads")}
+        />
+        <Kpi
+          label="Appointments"
+          value={booked}
+          icon={<Icon.calendar />}
+          tint="#7c3aed"
+          onClick={() => onNavigate("appointments")}
+        />
         <Kpi
           label="Avg Call Time"
           value={fmtDuration(avgDuration)}
           icon={<Icon.clock />}
           tint="#db2777"
+          onClick={() => onNavigate("calls")}
         />
       </div>
 
@@ -884,14 +947,20 @@ function Kpi({
   value,
   icon,
   tint,
+  onClick,
 }: {
   label: string;
   value: string | number;
   icon: ReactNode;
   tint: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 active:translate-y-0"
+    >
       <div className="flex items-center justify-between">
         <span className="text-sm text-gray-500">{label}</span>
         <span
@@ -902,7 +971,10 @@ function Kpi({
         </span>
       </div>
       <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
-    </div>
+      <div className="mt-1 flex items-center gap-1 text-xs font-medium text-gray-400 opacity-0 transition group-hover:opacity-100">
+        View details <span aria-hidden>→</span>
+      </div>
+    </button>
   );
 }
 

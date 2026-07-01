@@ -127,6 +127,38 @@
           ]
         }
       }
+    },
+    {
+      "type": "webhook",
+      "name": "requestCallback",
+      "description": "Call the caller's phone and continue the conversation there, when they'd rather talk by phone or ask for a callback. Ask for their phone number first.",
+      "response_timeout_secs": 20,
+      "api_schema": {
+        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "method": "POST",
+        "path_params_schema": [],
+        "query_params_schema": [
+          { "id": "tenant", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "nestriq" },
+          { "id": "fn", "type": "string", "required": true, "description": "", "dynamic_variable": "", "constant_value": "requestCallback" },
+          { "id": "conversation_id", "type": "string", "required": false, "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "" }
+        ],
+        "request_headers": [
+          { "type": "value", "name": "Content-Type", "value": "application/json" },
+          { "type": "value", "name": "ngrok-skip-browser-warning", "value": "true" }
+        ],
+        "request_body_schema": {
+          "id": "body",
+          "type": "object",
+          "description": "Callback details",
+          "required": true,
+          "properties": [
+            { "id": "name", "type": "string", "required": false, "description": "The caller's name.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "phone", "type": "string", "required": true, "description": "The caller's phone number to call them on (E.164).", "dynamic_variable": "", "constant_value": "" },
+            { "id": "reason", "type": "string", "required": false, "description": "Why they want a callback.", "dynamic_variable": "", "constant_value": "" },
+            { "id": "leadId", "type": "string", "required": false, "description": "The lead id returned by createLead.", "dynamic_variable": "", "constant_value": "" }
+          ]
+        }
+      }
     }
   ],
   "post_call_webhook_url": "https://4e72-39-45-106-49.ngrok-free.app/api/webhooks/elevenlabs"

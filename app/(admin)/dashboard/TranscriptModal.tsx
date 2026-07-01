@@ -71,11 +71,14 @@ export function TranscriptModal({
   lead,
   call,
   transcript,
+  summary,
   onClose,
 }: {
   lead: Lead;
   call: Call | null;
   transcript: Transcript | null;
+  // Best available call summary (transcript / call_summary event / saveCallSummary).
+  summary?: string | null;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -157,15 +160,18 @@ export function TranscriptModal({
           </button>
         </div>
 
-        {/* Summary */}
-        {transcript?.summary && (
-          <div className="border-b border-gray-100 bg-gray-50 px-5 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Call summary
+        {/* Summary — from the transcript, a call_summary event, or saveCallSummary. */}
+        {(() => {
+          const callSummary = summary ?? transcript?.summary;
+          return callSummary ? (
+            <div className="border-b border-gray-100 bg-gray-50 px-5 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Call summary
+              </div>
+              <p className="mt-1 text-sm text-gray-700">{callSummary}</p>
             </div>
-            <p className="mt-1 text-sm text-gray-700">{transcript.summary}</p>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         {/* Chat thread */}
         <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50/60 px-4 py-5 sm:px-6">

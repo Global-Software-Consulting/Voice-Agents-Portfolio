@@ -20,6 +20,7 @@ export type NormalizedFunctionCall = {
   externalCallId: string | null; // vendor's conversation/call id, if present
   functionName: string; // normalized, e.g. "createLead"
   args: Record<string, unknown>;
+  toolCallId?: string; // vendor's tool-call id (Vapi needs it to correlate the result)
 };
 
 // A call / transcript lifecycle event from a webhook.
@@ -39,4 +40,8 @@ export interface PlatformAdapter {
   platform: VoicePlatform;
   parseFunctionCall(input: AdapterInput): NormalizedFunctionCall;
   parseWebhook(input: AdapterInput): NormalizedCallEvent;
+  // Optional: format the function result into the vendor's expected HTTP response
+  // shape (e.g. Vapi wants `{ results: [{ toolCallId, result }] }`). Defaults to
+  // `{ ok: true, result }` when not implemented.
+  formatFunctionResult?(call: NormalizedFunctionCall, result: unknown): unknown;
 }

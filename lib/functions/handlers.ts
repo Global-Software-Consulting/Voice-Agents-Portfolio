@@ -5,6 +5,7 @@
 import { bookAppointment } from "../api/appointments";
 import { createLead, updateLead } from "../api/leads";
 import { logAgentEvent } from "../api/events";
+import { placeAgentCall } from "../telephony/outbound";
 
 export type FunctionContext = {
   slug: string; // tenant slug / agent_type
@@ -126,6 +127,58 @@ const handlers: Record<string, Handler> = {
     const emotion = summarizeEmotions(args);
     await logAgentEvent(ctx.tenantId, ctx.callId, "emotion_analysis", emotion);
     return emotion;
+  },
+
+  // --- Callora (Vapi) --------------------------------------------------------
+
+  // Book a service appointment (home services). Same shape as bookConsultation.
+  bookAppointment: async (args, ctx) => {
+    const appointmentId = await bookAppointment(ctx.tenantId, str(args.leadId) ?? null, {
+      date: str(args.date),
+      time: str(args.time),
+    });
+    return { appointmentId };
+  },
+
+  // Save a short call summary captured by the agent (logged as an event).
+  saveCallSummary: async (args, ctx) => {
+    await logAgentEvent(ctx.tenantId, ctx.callId, "call_summary", args);
+    return { saved: true };
+  },
+
+  // --- Phone callback (shared by all agents) ---------------------------------
+
+  // Call the caller's phone and connect them to THIS tenant's voice agent (the AI
+  // continues the conversation by phone — no human bridge). Uses the platform's
+  // native outbound calling (Vapi / ElevenLabs).
+  requestCallback: async (args, ctx) => {
+    await logAgentEvent(ctx.tenantId, ctx.callId, "callback_requested", args);
+    const phone = str(args.phone);
+
+    if (!phone) {
+      return { called: false, message: "What phone number should we call you on?" };
+    }
+
+    const result = await placeAgentCall(ctx.slug, phone);
+
+    if (!result) {
+      return {
+        called: false,
+        message:
+          "I've noted your callback request — we'll ring you back shortly.",
+      };
+    }
+
+    if (str(args.leadId)) await updateLead(str(args.leadId)!, { status: "callback" });
+    await logAgentEvent(ctx.tenantId, ctx.callId, "callback_placed", {
+      to: phone,
+      callId: result.id,
+    });
+    return {
+      called: true,
+      callId: result.id,
+      message: "Calling you now — your phone will ring in just a moment.",
+    };
   },
 };
 

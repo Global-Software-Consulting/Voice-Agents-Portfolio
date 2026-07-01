@@ -8,8 +8,8 @@
 import type { TenantConfig } from "./types";
 import { nestriq } from "./nestriq";
 import { lexora } from "./lexora";
+import { callora } from "./callora";
 
-// import { callora } from "./callora";
 // import { medelynx } from "./medelynx";
 // import { qualivo } from "./qualivo";
 // import { voxium } from "./voxium";
@@ -17,7 +17,7 @@ import { lexora } from "./lexora";
 export const TENANTS: Record<string, TenantConfig> = {
   nestriq,
   lexora,
-  // callora,
+  callora,
   // medelynx,
   // qualivo,
   // voxium,

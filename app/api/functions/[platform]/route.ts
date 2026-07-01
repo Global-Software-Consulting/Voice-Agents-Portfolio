@@ -38,7 +38,12 @@ export async function POST(
     });
 
     await logFunctionCall(tenantId, callId, call.functionName, call.args, result);
-    return Response.json({ ok: true, result });
+    // Some vendors (e.g. Vapi) require a specific response shape; the adapter
+    // formats it. Others get the default { ok, result }.
+    const payload = adapter.formatFunctionResult
+      ? adapter.formatFunctionResult(call, result)
+      : { ok: true, result };
+    return Response.json(payload);
   } catch (err) {
     return Response.json({ ok: false, error: errorMessage(err) }, { status: 500 });
   }

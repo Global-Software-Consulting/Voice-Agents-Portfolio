@@ -1,0 +1,88 @@
+{
+  "_note": "Tool (function) configs for the Callora Vapi assistant. Each tool has its own `server.url` pointing at our shared endpoint with the tenant + function name, so Vapi POSTs a 'tool-calls' message there and we reply with Vapi's expected shape `{ results: [{ toolCallId, result }] }` (handled by lib/adapters/vapi.ts). HOW TO ADD — Dashboard: Vapi -> your Assistant -> Tools -> Add Tool -> Function, paste name/description/parameters and set the Server URL. API: include these in the assistant's `model.tools` array (POST/PATCH /assistant). Set `async:false` so the assistant WAITS for the result (it needs the leadId back). Replace <DOMAIN> with your stable domain (e.g. callora.vercel.app or your custom domain) — NOT the per-deploy hash URL. The optional server.secret is sent as the `x-vapi-secret` header; set VAPI_SECRET to the same value to verify (currently enforced on the webhook route). SEPARATELY, set the ASSISTANT's serverUrl to https://<DOMAIN>/api/webhooks/vapi?tenant=callora for the end-of-call-report (transcript + summary).",
+  "tools": [
+    {
+      "type": "function",
+      "async": false,
+      "function": {
+        "name": "createLead",
+        "description": "Create a new customer lead as soon as you have the caller's name. Call once near the start. Returns a leadId you must reuse in the later tools.",
+        "parameters": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "description": "The caller's full name." },
+            "phone": { "type": "string", "description": "The caller's phone number." },
+            "email": { "type": "string", "description": "The caller's email address." },
+            "service": { "type": "string", "description": "Service needed, e.g. roof inspection, HVAC repair, plumbing." }
+          }
+        }
+      },
+      "server": {
+        "url": "https://<DOMAIN>/api/functions/vapi?tenant=callora&fn=createLead"
+      }
+    },
+    {
+      "type": "function",
+      "async": false,
+      "function": {
+        "name": "bookAppointment",
+        "description": "Book a service appointment when the customer agrees on a time. Pass the leadId from createLead plus the date and time.",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "leadId": { "type": "string", "description": "The lead id returned by createLead." },
+            "date": { "type": "string", "description": "Preferred date (YYYY-MM-DD)." },
+            "time": { "type": "string", "description": "Preferred time, e.g. 9:00 AM." }
+          }
+        }
+      },
+      "server": {
+        "url": "https://<DOMAIN>/api/functions/vapi?tenant=callora&fn=bookAppointment"
+      }
+    },
+    {
+      "type": "function",
+      "async": false,
+      "function": {
+        "name": "saveCallSummary",
+        "description": "Save a short summary of the call for the team. Call at the end of the conversation.",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "leadId": { "type": "string", "description": "The lead id returned by createLead." },
+            "summary": { "type": "string", "description": "A one or two sentence summary of what the caller needed." }
+          }
+        }
+      },
+      "server": {
+        "url": "https://<DOMAIN>/api/functions/vapi?tenant=callora&fn=saveCallSummary"
+      }
+    },
+    {
+      "type": "function",
+      "async": false,
+      "function": {
+        "name": "requestCallback",
+        "description": "Call the caller's phone and continue the conversation there, when they'd rather talk by phone or ask for a callback. Ask for their phone number first.",
+        "parameters": {
+          "type": "object",
+          "required": ["phone"],
+          "properties": {
+            "name": { "type": "string", "description": "The caller's name." },
+            "phone": { "type": "string", "description": "The caller's phone number to call them on (E.164, e.g. +14255550123)." },
+            "reason": { "type": "string", "description": "Why they want a callback." },
+            "leadId": { "type": "string", "description": "The lead id from createLead." }
+          }
+        }
+      },
+      "server": {
+        "url": "https://<DOMAIN>/api/functions/vapi?tenant=callora&fn=requestCallback"
+      }
+    }
+  ],
+  "assistant_server_url": "https://<DOMAIN>/api/webhooks/vapi?tenant=callora",
+  "first_message": "Thanks for calling Callora — how can we help with your home today?"
+}

@@ -8,8 +8,9 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { LeadFallbackForm } from "./LeadFallbackForm";
 
-// Lazy + client-only so the Hume SDK never ships for non-Hume tenants or SSR.
+// Lazy + client-only so each vendor SDK only ships for its own tenant / never SSR.
 const HumeWidget = dynamic(() => import("./HumeWidget"), { ssr: false });
+const VapiWidget = dynamic(() => import("./VapiWidget"), { ssr: false });
 
 type Props = {
   agentId: string;
@@ -56,7 +57,9 @@ export function VoiceWidget({ agentId, platform, accent, tenant }: Props) {
     const envVar =
       platform === "hume"
         ? "NEXT_PUBLIC_HUME_CONFIG_ID"
-        : "NEXT_PUBLIC_ELEVENLABS_AGENT_ID";
+        : platform === "vapi"
+          ? "NEXT_PUBLIC_VAPI_ASSISTANT_ID"
+          : "NEXT_PUBLIC_ELEVENLABS_AGENT_ID";
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white/70 p-4 text-sm text-gray-500">
         🎤 <strong>Talk To Agent</strong> — set <code>{envVar}</code> in{" "}
@@ -79,6 +82,10 @@ export function VoiceWidget({ agentId, platform, accent, tenant }: Props) {
 
   if (platform === "hume") {
     return <HumeWidget tenant={tenant} configId={agentId} accent={accent} />;
+  }
+
+  if (platform === "vapi") {
+    return <VapiWidget tenant={tenant} assistantId={agentId} accent={accent} />;
   }
 
   return (

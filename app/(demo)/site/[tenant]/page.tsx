@@ -139,7 +139,12 @@ export default async function DemoPage({
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <VoiceWidget
-                agentId={cfg.platformConfig.agentId ?? cfg.platformConfig.configId ?? ""}
+                agentId={
+                  cfg.platformConfig.agentId ??
+                  cfg.platformConfig.configId ??
+                  cfg.platformConfig.assistantId ??
+                  ""
+                }
                 platform={platform}
                 accent={accent}
                 tenant={cfg.slug}

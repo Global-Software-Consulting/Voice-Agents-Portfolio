@@ -128,7 +128,9 @@ export const nestriq: TenantConfig = {
     "and desired timeline. Assess motivation, then offer to book a consultation.",
     "Call createLead early, saveSellerDetails as you learn about the property,",
     "calculateMotivationScore once you know reason + timeline, and bookConsultation",
-    "when the seller is interested. Be concise and never give legal or tax advice.",
+    "when the seller is interested. If they'd rather continue by phone or ask for a",
+    "callback, get their phone number and call requestCallback so we can call them back.",
+    "Be concise and never give legal or tax advice.",
   ].join(" "),
 
   functions: [
@@ -169,6 +171,17 @@ export const nestriq: TenantConfig = {
         { name: "leadId", type: "string" },
         { name: "date", type: "string" },
         { name: "time", type: "string" },
+      ],
+    },
+    {
+      name: "requestCallback",
+      description:
+        "Call the caller's phone and continue the conversation there, when they'd rather talk by phone or ask for a callback.",
+      params: [
+        { name: "name", type: "string" },
+        { name: "phone", type: "string", required: true, description: "the caller's phone number to call them on" },
+        { name: "reason", type: "string" },
+        { name: "leadId", type: "string" },
       ],
     },
   ],
