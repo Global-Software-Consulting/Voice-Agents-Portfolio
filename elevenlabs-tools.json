@@ -7,7 +7,7 @@
       "description": "Create a new seller lead as soon as you have the caller's name. Call once near the start. Returns a leadId you must reuse in later tools.",
       "response_timeout_secs": 20,
       "api_schema": {
-        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "url": "https://nestriq.gsoftconsulting.com/api/functions/elevenlabs",
         "method": "POST",
         "path_params_schema": [],
         "query_params_schema": [
@@ -38,7 +38,7 @@
       "description": "Save property and seller context as you learn it (address, condition, reason, timeline). Pass the leadId from createLead.",
       "response_timeout_secs": 20,
       "api_schema": {
-        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "url": "https://nestriq.gsoftconsulting.com/api/functions/elevenlabs",
         "method": "POST",
         "path_params_schema": [],
         "query_params_schema": [
@@ -71,7 +71,7 @@
       "description": "Calculate the seller's motivation score (0-100). Call once you know the reason and timeline. Pass the leadId from createLead.",
       "response_timeout_secs": 20,
       "api_schema": {
-        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "url": "https://nestriq.gsoftconsulting.com/api/functions/elevenlabs",
         "method": "POST",
         "path_params_schema": [],
         "query_params_schema": [
@@ -103,7 +103,7 @@
       "description": "Book a consultation appointment when the seller agrees. Pass the leadId from createLead plus the preferred date and time.",
       "response_timeout_secs": 20,
       "api_schema": {
-        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "url": "https://nestriq.gsoftconsulting.com/api/functions/elevenlabs",
         "method": "POST",
         "path_params_schema": [],
         "query_params_schema": [
@@ -134,7 +134,7 @@
       "description": "Call the caller's phone and continue the conversation there, when they'd rather talk by phone or ask for a callback. Ask for their phone number first.",
       "response_timeout_secs": 20,
       "api_schema": {
-        "url": "https://4e72-39-45-106-49.ngrok-free.app/api/functions/elevenlabs",
+        "url": "https://nestriq.gsoftconsulting.com/api/functions/elevenlabs",
         "method": "POST",
         "path_params_schema": [],
         "query_params_schema": [
@@ -161,5 +161,5 @@
       }
     }
   ],
-  "post_call_webhook_url": "https://4e72-39-45-106-49.ngrok-free.app/api/webhooks/elevenlabs"
+  "post_call_webhook_url": "https://nestriq.gsoftconsulting.com/api/webhooks/elevenlabs"
 }

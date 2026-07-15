@@ -17,7 +17,11 @@ import { VoiceProvider, useVoice, type ToolCallHandler } from "@humeai/voice-rea
 import { LeadFallbackForm } from "./LeadFallbackForm";
 
 type Props = { tenant: string; configId: string; accent: string };
-type InnerProps = Props & { chatIdRef: React.MutableRefObject<string> };
+type InnerProps = Props & {
+  chatIdRef: React.MutableRefObject<string>;
+  failed: boolean;
+  setFailed: (v: boolean) => void;
+};
 
 // Pick the strongest emotion from Hume's prosody score map.
 function topEmotion(
@@ -45,12 +49,11 @@ function userProsodyScores(m: unknown): Record<string, number> | null {
   return null;
 }
 
-function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
-  const { connect, disconnect, status, messages, chatMetadata } = useVoice();
-  const [error, setError] = useState<string | null>(null);
-  // When the call can't start (out of credits / quota / connection error) we
-  // offer the callback form instead.
-  const [failed, setFailed] = useState(false);
+function Inner({ tenant, configId, accent, chatIdRef, failed, setFailed }: InnerProps) {
+  const { connect, disconnect, status, messages, chatMetadata, error, isError } =
+    useVoice();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const setError = setErrorMsg;
   const lastEmotion = useRef<string>("");
 
   // Share the live chat id with the tool-call handler (in the parent) so every
@@ -81,6 +84,23 @@ function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
       setFailed(true);
     }
   }, [connect, configId]);
+
+  // Hume reports out-of-credits / quota / socket failures *asynchronously*: the
+  // token mint (GET /api/voice/hume-token) still returns 200 and connect()
+  // resolves, but the EVI socket is then rejected/closed. Depending on the cause
+  // this surfaces as status "error", or as the context `error`/`isError` (the
+  // provider's onError also flips `failed` from the parent). Watch all of them
+  // and fall back to the callback form.
+  useEffect(() => {
+    if (status.value === "error" || isError || error) {
+      const reason =
+        (status.value === "error" && status.reason) ||
+        error?.message ||
+        "Our voice line is busy right now.";
+      setError(reason);
+      setFailed(true);
+    }
+  }, [status, isError, error, setFailed]);
 
   // Roll up the caller's emotional state as the conversation progresses, posting
   // a new reading only when the dominant emotion changes (avoids spamming rows).
@@ -138,9 +158,9 @@ function Inner({ tenant, configId, accent, chatIdRef }: InnerProps) {
           ● Live — speak now
         </span>
       )}
-      {error && (
+      {errorMsg && (
         <span className="max-w-[220px] rounded-full bg-white px-3 py-1 text-xs text-rose-600 shadow-md">
-          {error}
+          {errorMsg}
         </span>
       )}
       <button
@@ -159,6 +179,15 @@ export default function HumeWidget({ tenant, configId, accent }: Props) {
   // Holds the live chat id so tool calls link to the same call row as the
   // emotion readings and the post-call transcript. Set by Inner from chatMetadata.
   const chatIdRef = useRef<string>("");
+
+  // Whether the call couldn't start (out of credits / quota / socket rejected).
+  // Lifted here because the most reliable failure signal — the provider's
+  // onError callback — fires at this level, not inside Inner. A successful call
+  // that was connected then cleanly ended (onClose after a real connection) must
+  // NOT trip this, so we only treat a close as failure when it happens without
+  // the socket ever reaching "connected" (tracked via connectedRef).
+  const [failed, setFailed] = useState(false);
+  const connectedRef = useRef(false);
 
   // Tool calls are executed by our shared server pipeline, then the result is
   // returned to Hume so the agent can continue the conversation.
@@ -186,8 +215,32 @@ export default function HumeWidget({ tenant, configId, accent }: Props) {
   );
 
   return (
-    <VoiceProvider onToolCall={handleToolCall}>
-      <Inner tenant={tenant} configId={configId} accent={accent} chatIdRef={chatIdRef} />
+    <VoiceProvider
+      onToolCall={handleToolCall}
+      onOpen={() => {
+        connectedRef.current = true;
+      }}
+      onError={(err) => {
+        // Out-of-credits / quota / assistant-error: the canonical failure hook.
+        console.log("[hume] onError", err);
+        setFailed(true);
+      }}
+      onClose={(e) => {
+        // A close *before* a successful open means the socket was rejected
+        // (e.g. out of credits) rather than a user-ended call.
+        console.log("[hume] onClose", e, "wasConnected=", connectedRef.current);
+        if (!connectedRef.current) setFailed(true);
+        connectedRef.current = false;
+      }}
+    >
+      <Inner
+        tenant={tenant}
+        configId={configId}
+        accent={accent}
+        chatIdRef={chatIdRef}
+        failed={failed}
+        setFailed={setFailed}
+      />
     </VoiceProvider>
   );
 }
